@@ -174,7 +174,7 @@ def main():
             output.seek(0)
 
         st.download_button(
-            label="Download Combined Comparison Output",
+            label="Download Comparison Sheet",
             data=output,
             file_name="combined_comparison_output.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

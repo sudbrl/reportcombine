@@ -183,5 +183,3 @@ def main():
             data=output,
             file_name="combined_comparison_output.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml
-
-    

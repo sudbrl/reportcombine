@@ -184,7 +184,4 @@ def main():
             file_name="combined_comparison_output.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml
 
-        )
-
-if __name__ == "__main__":
-    main()
+    

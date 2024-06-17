@@ -21,19 +21,16 @@ def autofit_excel(writer):
             worksheet.column_dimensions[column].width = adjusted_width
 
 def compare_excel_files(df_previous, df_this, writer):
-    # Ensure that compulsory columns are present
     if 'Main Code' not in df_previous.columns or 'Balance' not in df_previous.columns:
         raise ValueError("Previous file is missing required columns: 'Main Code' and 'Balance'")
     if 'Main Code' not in df_this.columns or 'Balance' not in df_this.columns:
         raise ValueError("Current file is missing required columns: 'Main Code' and 'Balance'")
 
-    # Exclude rows with Limit == 0 if the 'Limit' column is present
     if 'Limit' in df_previous.columns:
         df_previous = df_previous[df_previous['Limit'] != 0]
     if 'Limit' in df_this.columns:
         df_this = df_this[df_this['Limit'] != 0]
 
-    # Filter out rows where 'Main Code' is 'AcType Total' or 'Grand Total'
     df_previous = df_previous[~df_previous['Main Code'].isin(['AcType Total', 'Grand Total'])]
     df_this = df_this[~df_this['Main Code'].isin(['AcType Total', 'Grand Total'])]
 
@@ -44,7 +41,6 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = df_previous.loc[df_previous['Main Code'].isin(previous_codes & this_codes)]
 
-    # Safe merge and calculation of balance changes
     in_both = pd.merge(
         in_both[['Main Code', 'Balance']], 
         df_this[['Main Code', 'Balance']], 
@@ -83,67 +79,66 @@ def read_excel_sheets(file):
     return dask_sheets
 
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
+    loan_types_to_exclude = [
+        'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
+        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
+    ]
+    
     common_actype_present = False
     for sheet_name in sheets_1:
         if sheet_name in sheets_2:
             df1 = sheets_1[sheet_name]
             df2 = sheets_2[sheet_name]
 
-            # Ensure required columns exist
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
                 
                 common_actype_present = True
 
-                # Exclude rows with Limit == 0
                 df1 = df1[df1['Limit'] != 0]
                 df2 = df2[df2['Limit'] != 0]
 
-                # Filter out rows where 'Main Code' is 'AcType Total' or 'Grand Total'
                 df1 = df1[~df1['Main Code'].isin(['AcType Total', 'Grand Total'])]
                 df2 = df2[~df2['Main Code'].isin(['AcType Total', 'Grand Total'])]
 
-                # Group by 'Ac Type Desc' and calculate sum and count
+                df1 = df1[~df1['Ac Type Desc'].isin(loan_types_to_exclude)]
+                df2 = df2[~df2['Ac Type Desc'].isin(loan_types_to_exclude)]
+
                 df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()
                 df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()
                 
-                # Rename columns with appropriate names for previous and new sheets
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
                 
-                # Merge dataframes on 'Ac Type Desc' with a full outer join
                 combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer')
                 
-                # Replace NaN values with 0
                 combined_df = combined_df.fillna(0)
 
-                # Calculate percentage change
                 combined_df['Percent Change'] = ((combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']) / combined_df['Previous Balance Sum']) * 100
-                
-                # Fix the percentage format to be 0.00%
                 combined_df['Percent Change'] = combined_df['Percent Change'].apply(lambda x: '{:.2f}%'.format(x))
 
-                # Add total row
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
+
+                total_prev_balance = total_row.at['Total', 'Previous Balance Sum']
+                total_new_balance = total_row.at['Total', 'New Balance Sum']
+                overall_percent_change = ((total_new_balance - total_prev_balance) / total_prev_balance) * 100
+                total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
+
                 combined_df = pd.concat([combined_df, total_row])
                 
-                # Select relevant columns for output
                 result_df = combined_df.reset_index()
                 
-                # Write to Excel sheet 'Compare'
                 result_df.to_excel(writer, sheet_name='Compare', index=False)
 
-                # Apply bold font to the total row
                 worksheet = writer.sheets['Compare']
-                total_row_idx = len(result_df)  # Total row index (1-based)
-                for col in range(len(result_df.columns)):  # Loop over columns
-                    cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)  # Adjust column index to 1-based
+                total_row_idx = len(result_df)
+                for col in range(len(result_df.columns)):
+                    cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
                     cell.font = Font(bold=True)
 
-                    # Apply percentage format to Percent Change column
                     if result_df.columns[col] == 'Percent Change':
-                        for row in range(2, total_row_idx + 2):  # Loop over rows (1-based index)
+                        for row in range(2, total_row_idx + 2):
                             worksheet.cell(row=row, column=col + 1).number_format = '0.00%'
 
     return common_actype_present
@@ -187,4 +182,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

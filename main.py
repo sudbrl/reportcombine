@@ -120,9 +120,6 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 # Calculate percentage change
                 combined_df['Percent Change'] = ((combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']) / combined_df['Previous Balance Sum']) * 100
                 
-                # Fix the percentage format to be 0.00%
-                combined_df['Percent Change'] = combined_df['Percent Change'].apply(lambda x: '{:.2f}%'.format(x))
-
                 # Add total row
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
@@ -141,10 +138,11 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                     cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)  # Adjust column index to 1-based
                     cell.font = Font(bold=True)
 
-                    # Apply percentage format to Percent Change column
+                    # Apply percentage format to Percent Change column in the Total row
                     if result_df.columns[col] == 'Percent Change':
-                        for row in range(2, total_row_idx + 2):  # Loop over rows (1-based index)
-                            worksheet.cell(row=row, column=col + 1).number_format = '0.00%'
+                        total_value = total_row[result_df.columns[col]].values[0]
+                        cell.value = '{:.2f}%'.format(total_value / 100 if total_value > 0 else 0)
+                        cell.number_format = '0.00%'
 
     return common_actype_present
 

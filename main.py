@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import dask.dataframe as dd
 from openpyxl import load_workbook
-from openpyxl.styles import Font, numbers
+from openpyxl.styles import Font
 from io import BytesIO
 
 def autofit_excel(writer):
@@ -120,6 +120,9 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 # Calculate percentage change
                 combined_df['Percent Change'] = ((combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']) / combined_df['Previous Balance Sum']) * 100
                 
+                # Fix the percentage format to be 0.00%
+                combined_df['Percent Change'] = combined_df['Percent Change'].apply(lambda x: '{:.2f}%'.format(x))
+
                 # Add total row
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
@@ -137,7 +140,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 for col in range(len(result_df.columns)):  # Loop over columns
                     cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)  # Adjust column index to 1-based
                     cell.font = Font(bold=True)
-                    
+
                     # Apply percentage format to Percent Change column
                     if result_df.columns[col] == 'Percent Change':
                         for row in range(2, total_row_idx + 2):  # Loop over rows (1-based index)
@@ -184,4 +187,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

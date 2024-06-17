@@ -122,7 +122,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 
                 total_prev_balance = total_row.at['Total', 'Previous Balance Sum']
                 total_new_balance = total_row.at['Total', 'New Balance Sum']
-                overall_percent_change = ((total_new_balance - total_prev_balance) / total_prev_balance) * 100
+                overall_percent_change = ((total_new_balance - total_prev_balance) / total_prev_balance) * 100 if total_prev_balance != 0 else 0
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
                 combined_df = pd.concat([combined_df, total_row])

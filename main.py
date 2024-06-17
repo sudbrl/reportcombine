@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import dask.dataframe as dd
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, numbers
 from io import BytesIO
 
 def autofit_excel(writer):
@@ -127,18 +127,21 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 
                 # Select relevant columns for output
                 result_df = combined_df.reset_index()
+                
+                # Write to Excel sheet 'Compare'
                 result_df.to_excel(writer, sheet_name='Compare', index=False)
 
                 # Apply bold font to the total row
                 worksheet = writer.sheets['Compare']
                 total_row_idx = len(result_df)  # Total row index (1-based)
-                for col in range(1, len(result_df.columns) + 2):  # Including index column
-                    cell = worksheet.cell(row=total_row_idx + 1, column=col)
+                for col in range(len(result_df.columns)):  # Loop over columns
+                    cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)  # Adjust column index to 1-based
                     cell.font = Font(bold=True)
                     
                     # Apply percentage format to Percent Change column
-                    if result_df.columns[col - 1] == 'Percent Change':
-                        cell.number_format = '0.00%'
+                    if result_df.columns[col] == 'Percent Change':
+                        for row in range(2, total_row_idx + 2):  # Loop over rows (1-based index)
+                            worksheet.cell(row=row, column=col + 1).number_format = '0.00%'
 
     return common_actype_present
 
@@ -181,3 +184,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

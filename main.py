@@ -117,14 +117,17 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 # Replace NaN values with 0
                 combined_df = combined_df.fillna(0)
 
-                # Calculate percentage change
-                combined_df['Percent Change'] = ((combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']) / combined_df['Previous Balance Sum']) * 100
-                
                 # Add total row
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
                 combined_df = pd.concat([combined_df, total_row])
                 
+                # Calculate percentage change for Total row based on total of respective columns
+                total_previous_sum = total_row['Previous Balance Sum'].values[0]
+                total_new_sum = total_row['New Balance Sum'].values[0]
+                total_percent_change = ((total_new_sum - total_previous_sum) / total_previous_sum) * 100 if total_previous_sum != 0 else 0
+                total_row['Percent Change'] = '{:.2f}%'.format(total_percent_change)
+
                 # Select relevant columns for output
                 result_df = combined_df.reset_index()
                 
@@ -138,11 +141,10 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                     cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)  # Adjust column index to 1-based
                     cell.font = Font(bold=True)
 
-                    # Apply percentage format to Percent Change column in the Total row
-                    if result_df.columns[col] == 'Percent Change':
-                        total_value = total_row[result_df.columns[col]].values[0]
-                        cell.value = '{:.2f}%'.format(total_value / 100 if total_value > 0 else 0)
-                        cell.number_format = '0.00%'
+                    # Apply two decimal format to all numeric columns
+                    if result_df.columns[col] != 'Ac Type Desc' and result_df.columns[col] != 'Percent Change':
+                        for row in range(2, total_row_idx + 2):  # Loop over rows (1-based index)
+                            worksheet.cell(row=row, column=col + 1).number_format = '0.00'
 
     return common_actype_present
 
@@ -180,7 +182,8 @@ def main():
             label="Download Combined Comparison Output",
             data=output,
             file_name="combined_comparison_output.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml
+
         )
 
 if __name__ == "__main__":

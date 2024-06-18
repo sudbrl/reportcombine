@@ -75,7 +75,13 @@ def compare_excel_files(df_previous, df_this, writer):
 
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
-    dask_sheets = {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
+    dask_sheets = {}
+    for sheet_name, sheet_df in sheets.items():
+        if 'Branch Code' in sheet_df.columns:
+            sheet_df['Branch Code'] = sheet_df['Branch Code'].astype(str)
+        if 'BranchCode' in sheet_df.columns:
+            sheet_df['BranchCode'] = sheet_df['BranchCode'].astype(str)
+        dask_sheets[sheet_name] = dd.from_pandas(sheet_df, npartitions=1)
     return dask_sheets
 
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):

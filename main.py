@@ -39,15 +39,15 @@ def compare_excel_files(df_previous, df_this, writer):
     df_previous = df_previous[~df_previous['Main Code'].isin(['AcType Total', 'Grand Total'])]
     df_this = df_this[~df_this['Main Code'].isin(['AcType Total', 'Grand Total'])]
 
-    previous_codes = set(df_previous['Main Code'].compute())
-    this_codes = set(df_this['Main Code'].compute())
+    previous_codes = set(df_previous['Main Code'])
+    this_codes = set(df_this['Main Code'])
 
     # Identify differences and calculate changes
     only_in_previous = df_previous.loc[df_previous['Main Code'].isin(previous_codes - this_codes)]
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = df_previous.loc[df_previous['Main Code'].isin(previous_codes & this_codes)]
 
-    in_both = dd.merge(
+    in_both = pd.merge(
         in_both[['Main Code', 'Balance']], 
         df_this[['Main Code', 'Balance']], 
         on='Main Code', 
@@ -56,12 +56,12 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both['Change'] = in_both['Balance_this'] - in_both['Balance_previous']
 
     # Calculate summary statistics
-    opening_sum = df_previous['Balance'].sum().compute()
-    settled_sum = only_in_previous['Balance'].sum().compute()
-    new_sum = only_in_this['Balance'].sum().compute()
-    increase_decrease_sum = in_both['Change'].sum().compute()
+    opening_sum = df_previous['Balance'].sum()
+    settled_sum = only_in_previous['Balance'].sum()
+    new_sum = only_in_this['Balance'].sum()
+    increase_decrease_sum = in_both['Change'].sum()
     adjusted_sum = opening_sum - settled_sum + new_sum + increase_decrease_sum
-    closing_sum = df_this['Balance'].sum().compute()
+    closing_sum = df_this['Balance'].sum()
 
     opening_count = len(previous_codes)
     settled_count = len(previous_codes - this_codes)
@@ -77,9 +77,9 @@ def compare_excel_files(df_previous, df_this, writer):
     df_reco = pd.DataFrame(reco_data)
 
     # Write results to Excel sheets
-    only_in_previous.compute().to_excel(writer, sheet_name='Settled', index=False)
-    only_in_this.compute().to_excel(writer, sheet_name='New', index=False)
-    in_both.compute().to_excel(writer, sheet_name='Movement', index=False)
+    only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
+    only_in_this.to_excel(writer, sheet_name='New', index=False)
+    in_both.to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
 # Function to read Excel sheets into Dask DataFrames
@@ -115,13 +115,13 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 df1 = df1[~df1['Ac Type Desc'].isin(loan_types_to_exclude)]
                 df2 = df2[~df2['Ac Type Desc'].isin(loan_types_to_exclude)]
 
-                df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
-                df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
+                df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()
+                df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()
                 
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
                 
-                combined_df = dd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer')
+                combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer')
                 
                 combined_df = combined_df.fillna(0)
 
@@ -136,11 +136,11 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 overall_percent_change = ((total_new_balance - total_prev_balance) / total_prev_balance) * 100 if total_prev_balance != 0 else 0
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
-                combined_df = dd.concat([combined_df, total_row])
+                combined_df = pd.concat([combined_df, total_row])
                 
                 result_df = combined_df.reset_index()
                 
-                result_df.compute().to_excel(writer, sheet_name='Compare', index=False)
+                result_df.to_excel(writer, sheet_name='Compare', index=False)
 
                 worksheet = writer.sheets['Compare']
                 total_row_idx = len(result_df)
@@ -165,12 +165,15 @@ def main():
     if previous_file and current_file:
         with st.spinner("Processing..."):
             try:
+                df_previous = pd.read_excel(previous_file)
+                df_this = pd.read_excel(current_file)
+
                 excel_sheets_1 = read_excel_sheets(previous_file)
                 excel_sheets_2 = read_excel_sheets(current_file)
 
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    compare_excel_files(excel_sheets_1['Sheet1'], excel_sheets_2['Sheet1'], writer)
+                    compare_excel_files(df_previous, df_this, writer)
                     common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
 
                     autofit_excel(writer)
@@ -178,7 +181,7 @@ def main():
                 if not common_actype_present:
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        compare_excel_files(excel_sheets_1['Sheet1'], excel_sheets_2['Sheet1'], writer)
+                        compare_excel_files(df_previous, df_this, writer)
                         autofit_excel(writer)
 
                 output.seek(0)

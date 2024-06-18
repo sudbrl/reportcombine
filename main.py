@@ -5,6 +5,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
+# Function to adjust Excel column widths
 def autofit_excel(writer):
     for sheet_name in writer.sheets:
         worksheet = writer.sheets[sheet_name]
@@ -15,17 +16,21 @@ def autofit_excel(writer):
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
+                except Exception as e:
+                    st.error(f"Error adjusting column width: {e}")
+            adjusted_width = max_length + 2
             worksheet.column_dimensions[column].width = adjusted_width
 
+# Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
-    if 'Main Code' not in df_previous.columns or 'Balance' not in df_previous.columns:
-        raise ValueError("Previous file is missing required columns: 'Main Code' and 'Balance'")
-    if 'Main Code' not in df_this.columns or 'Balance' not in df_this.columns:
-        raise ValueError("Current file is missing required columns: 'Main Code' and 'Balance'")
+    required_columns = ['Main Code', 'Balance']
+    for col in required_columns:
+        if col not in df_previous.columns:
+            raise ValueError(f"Previous file is missing required column: '{col}'")
+        if col not in df_this.columns:
+            raise ValueError(f"Current file is missing required column: '{col}'")
 
+    # Filter out rows based on 'Limit' and 'Main Code' criteria
     if 'Limit' in df_previous.columns:
         df_previous = df_previous[df_previous['Limit'] != 0]
     if 'Limit' in df_this.columns:
@@ -37,6 +42,7 @@ def compare_excel_files(df_previous, df_this, writer):
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
 
+    # Identify differences and calculate changes
     only_in_previous = df_previous.loc[df_previous['Main Code'].isin(previous_codes - this_codes)]
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = df_previous.loc[df_previous['Main Code'].isin(previous_codes & this_codes)]
@@ -49,6 +55,7 @@ def compare_excel_files(df_previous, df_this, writer):
     )
     in_both['Change'] = in_both['Balance_this'] - in_both['Balance_previous']
 
+    # Calculate summary statistics
     opening_sum = df_previous['Balance'].sum()
     settled_sum = only_in_previous['Balance'].sum()
     new_sum = only_in_this['Balance'].sum()
@@ -61,6 +68,7 @@ def compare_excel_files(df_previous, df_this, writer):
     new_count = len(this_codes - previous_codes)
     closing_count = len(this_codes)
 
+    # Prepare reconciliation data
     reco_data = {
         'Description': ['Opening', 'Settled', 'New', 'Increase/Decrease', 'Adjusted', 'Closing'],
         'Amount': [opening_sum, settled_sum, new_sum, increase_decrease_sum, adjusted_sum, closing_sum],
@@ -68,16 +76,19 @@ def compare_excel_files(df_previous, df_this, writer):
     }
     df_reco = pd.DataFrame(reco_data)
 
+    # Write results to Excel sheets
     only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
     only_in_this.to_excel(writer, sheet_name='New', index=False)
     in_both.to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
+# Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     dask_sheets = {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
     return dask_sheets
 
+# Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
@@ -143,6 +154,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 
     return common_actype_present
 
+# Main function to run the Streamlit app
 def main():
     st.title("Excel File Comparison Tool")
 
@@ -152,33 +164,37 @@ def main():
 
     if previous_file and current_file:
         with st.spinner("Processing..."):
-            df_previous = pd.read_excel(previous_file)
-            df_this = pd.read_excel(current_file)
+            try:
+                df_previous = pd.read_excel(previous_file)
+                df_this = pd.read_excel(current_file)
 
-            excel_sheets_1 = read_excel_sheets(previous_file)
-            excel_sheets_2 = read_excel_sheets(current_file)
+                excel_sheets_1 = read_excel_sheets(previous_file)
+                excel_sheets_2 = read_excel_sheets(current_file)
 
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                compare_excel_files(df_previous, df_this, writer)
-                common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-
-                autofit_excel(writer)
-            
-            if not common_actype_present:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     compare_excel_files(df_previous, df_this, writer)
+                    common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+
                     autofit_excel(writer)
+                
+                if not common_actype_present:
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        compare_excel_files(df_previous, df_this, writer)
+                        autofit_excel(writer)
 
-            output.seek(0)
+                output.seek(0)
+                st.success("Processing completed successfully!")
 
-        st.download_button(
-            label="Download Comparison Sheet",
-            data=output,
-            file_name="combined_comparison_output.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+                st.download_button(
+                    label="Download Comparison Sheet",
+                    data=output,
+                    file_name="combined_comparison_output.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"An error occurred during processing: {e}")
 
 if __name__ == "__main__":
-    main() 
+    main()

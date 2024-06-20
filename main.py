@@ -137,9 +137,12 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 overall_percent_change = ((total_new_balance - total_prev_balance) / total_prev_balance) * 100 if total_prev_balance != 0 else 0
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
-                combined_df = pd.concat([combined_df, total_row])
-
+                # Exclude total row from sorting
+                combined_df = combined_df[combined_df.index != 'Total']
                 combined_df = combined_df.sort_values(by='Change', ascending=False)
+                
+                # Append total row back
+                combined_df = pd.concat([combined_df, total_row])
                 
                 result_df = combined_df.reset_index()
 
@@ -201,4 +204,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

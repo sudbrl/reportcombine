@@ -125,6 +125,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 
                 combined_df = combined_df.fillna(0)
 
+                combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
                 combined_df['Percent Change'] = ((combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']) / combined_df['Previous Balance Sum']) * 100
                 combined_df['Percent Change'] = combined_df['Percent Change'].apply(lambda x: '{:.2f}%'.format(x))
 
@@ -137,9 +138,11 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
                 combined_df = pd.concat([combined_df, total_row])
+
+                combined_df = combined_df.sort_values(by='Change', ascending=False)
                 
                 result_df = combined_df.reset_index()
-                
+
                 result_df.to_excel(writer, sheet_name='Compare', index=False)
 
                 worksheet = writer.sheets['Compare']

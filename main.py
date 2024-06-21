@@ -48,9 +48,9 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both = df_previous.loc[df_previous['Main Code'].isin(previous_codes & this_codes)]
 
     in_both = pd.merge(
-        in_both[['Main Code', 'Balance']], 
-        df_this[['Main Code', 'Balance']], 
-        on='Main Code', 
+        in_both[['Main Code', 'Balance']],
+        df_this[['Main Code', 'Balance']],
+        on='Main Code',
         suffixes=('_previous', '_this')
     )
     in_both['Change'] = in_both['Balance_this'] - in_both['Balance_previous']
@@ -96,10 +96,10 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     ]
     
     common_actype_present = False
-    for sheet_name in sheets_1:
-        if sheet_name in sheets_2:
-            df1 = sheets_1[sheet_name]
-            df2 = sheets_2[sheet_name]
+    for sheet_name_1 in sheets_1:
+        for sheet_name_2 in sheets_2:
+            df1 = sheets_1[sheet_name_1]
+            df2 = sheets_2[sheet_name_2]
 
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):

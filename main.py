@@ -16,10 +16,29 @@ def autofit_excel(writer):
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
+                    if cell.value is None:
+                        continue
                 except Exception as e:
                     st.error(f"Error adjusting column width: {e}")
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column].width = adjusted_width
+
+# Function to preprocess dataframes: exclude specified loan types, filter rows based on 'Limit' and 'Main Code' criteria
+def preprocess_dataframe(df):
+    loan_types_to_exclude = [
+        'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
+        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
+    ]
+    if 'Ac Type Desc' in df.columns:
+        df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
+
+    if 'Limit' in df.columns:
+        df = df[df['Limit'] != 0]
+
+    if 'Main Code' in df.columns:
+        df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
+    
+    return df
 
 # Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
@@ -30,14 +49,9 @@ def compare_excel_files(df_previous, df_this, writer):
         if col not in df_this.columns:
             raise ValueError(f"Current file is missing required column: '{col}'")
 
-    # Filter out rows based on 'Limit' and 'Main Code' criteria
-    if 'Limit' in df_previous.columns:
-        df_previous = df_previous[df_previous['Limit'] != 0]
-    if 'Limit' in df_this.columns:
-        df_this = df_this[df_this['Limit'] != 0]
-
-    df_previous = df_previous[~df_previous['Main Code'].isin(['AcType Total', 'Grand Total'])]
-    df_this = df_this[~df_this['Main Code'].isin(['AcType Total', 'Grand Total'])]
+    # Preprocess dataframes
+    df_previous = preprocess_dataframe(df_previous)
+    df_this = preprocess_dataframe(df_this)
 
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
@@ -90,11 +104,6 @@ def read_excel_sheets(file):
 
 # Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
-    loan_types_to_exclude = [
-        'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
-        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
-    ]
-    
     common_actype_present = False
     for sheet_name_1 in sheets_1:
         for sheet_name_2 in sheets_2:
@@ -106,14 +115,9 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 
                 common_actype_present = True
 
-                df1 = df1[df1['Limit'] != 0]
-                df2 = df2[df2['Limit'] != 0]
-
-                df1 = df1[~df1['Main Code'].isin(['AcType Total', 'Grand Total'])]
-                df2 = df2[~df2['Main Code'].isin(['AcType Total', 'Grand Total'])]
-
-                df1 = df1[~df1['Ac Type Desc'].isin(loan_types_to_exclude)]
-                df2 = df2[~df2['Ac Type Desc'].isin(loan_types_to_exclude)]
+                # Preprocess dataframes
+                df1 = preprocess_dataframe(df1)
+                df2 = preprocess_dataframe(df2)
 
                 df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()
                 df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'}).compute()

@@ -27,7 +27,7 @@ def autofit_excel(writer):
 def preprocess_dataframe(df):
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
-        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
+        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)', 'CURRENT ACCOUNT'
     ]
     if 'Ac Type Desc' in df.columns:
         df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]

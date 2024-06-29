@@ -184,7 +184,7 @@ def main():
     if previous_file and current_file:
 
         # Display Start Processing button with custom style
-        st.markdown('<style>div.stButton > button { background-color: #800080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
+        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
         start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
 
         if start_processing_button:

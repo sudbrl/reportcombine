@@ -4,6 +4,9 @@ import dask.dataframe as dd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
+# Display the logo
+st.image("logo.gif", use_column_width=True)
+
 # Hides the main menu, footer, and header
 hide_streamlit_style = """
             <style>

@@ -5,8 +5,13 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 # Display the logo
-st.image("logo.gif", use_column_width=True)
-
+# Display the logo in the browser tab
+st.markdown(
+    """
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    """
+)
 # Hides the main menu, footer, and header
 hide_streamlit_style = """
             <style>

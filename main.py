@@ -37,7 +37,7 @@ def preprocess_dataframe(df):
 
 # Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
-    required_columns = ['Main Code', 'Balance']
+    required_columns = ['Main Code', 'Balance', 'Name']
     for col in required_columns:
         if col not in df_previous.columns or col not in df_this.columns:
             raise ValueError(f"Missing required column: '{col}'")
@@ -51,8 +51,8 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_previous = df_previous.loc[df_previous['Main Code'].isin(previous_codes - this_codes)]
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
-        df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code', 'Balance']],
+        df_previous[['Main Code', 'Name', 'Balance']],
+        df_this[['Main Code', 'Name', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -74,7 +74,7 @@ def compare_excel_files(df_previous, df_this, writer):
 
     only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
     only_in_this.to_excel(writer, sheet_name='New', index=False)
-    in_both.to_excel(writer, sheet_name='Movement', index=False)
+    in_both.to_excel(writer, sheet_name='Movement', index=False, columns=['Main Code', 'Name', 'Balance_previous', 'Balance_this', 'Change'])
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
 # Function to read Excel sheets into Dask DataFrames

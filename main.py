@@ -174,6 +174,41 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 
     return common_actype_present
 
+# Function to generate slippage report
+def generate_slippage_report(df_previous, df_this, writer):
+    if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
+        # Merge data on 'Main Code'
+        common_df = pd.merge(
+            df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc']],
+            df_this[['Main Code', 'Balance', 'Provision']],
+            on='Main Code',
+            suffixes=('_Previous', '_This')
+        )
+
+        # Define the criteria for filtering
+        provision_pairs = [
+            ('Good', 'WatchList'),
+            ('WatchList', 'Substandard'),
+            ('Good', 'Substandard'),
+            ('Bad', 'Doubtful'),
+            ('Substandard', 'Doubtful'),
+            ('WatchList', 'Doubtful'),
+            ('Good', 'Doubtful'),
+            ('Doubtful', 'Bad'),
+            ('WatchList', 'Bad'),
+            ('Good', 'Bad')
+        ]
+
+        # Filter based on provision pairs
+        filtered_df = common_df[
+            common_df.apply(
+                lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
+            )
+        ][['Main Code', 'Balance', 'Provision_This', 'Provision_Previous', 'Branch Name', 'Ac Type Desc']]
+
+        # Write to the new sheet
+        filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
+
 # Main function to run the Streamlit app
 def main():
     st.title("Excel File Comparison Tool")
@@ -183,8 +218,6 @@ def main():
     current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
 
     if previous_file and current_file:
-
-        # Display Start Processing button with custom style
         st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
         start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
 
@@ -201,14 +234,8 @@ def main():
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         compare_excel_files(df_previous, df_this, writer)
                         common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-
+                        generate_slippage_report(df_previous, df_this, writer)
                         autofit_excel(writer)
-                    
-                    if not common_actype_present:
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            compare_excel_files(df_previous, df_this, writer)
-                            autofit_excel(writer)
 
                     output.seek(0)
                     st.success("Processing completed successfully!")

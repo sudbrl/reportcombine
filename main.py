@@ -52,7 +52,7 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code', 'Balance']],
+        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -153,7 +153,7 @@ def generate_slippage_report(df_previous, df_this, writer):
                 common_df.apply(
                     lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
                 )
-            ][['Main Code', 'Balance', 'Provision_This', 'Provision_Previous', 'Branch Name', 'Ac Type Desc']]
+            ][['Main Code', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
 
             filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
 

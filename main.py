@@ -153,7 +153,7 @@ def generate_slippage_report(df_previous, df_this, writer):
                 common_df.apply(
                     lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
                 )
-            ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_Previous', 'Provision_This']]
+            ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
 
             filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
 

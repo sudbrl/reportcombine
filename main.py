@@ -74,7 +74,7 @@ def compare_excel_files(df_previous, df_this, writer):
 
     only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
     only_in_this.to_excel(writer, sheet_name='New', index=False)
-    in_both.to_excel(writer, sheet_name='Movement', index=False)
+    in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
 # Function to read Excel sheets into Dask DataFrames
@@ -118,10 +118,10 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 worksheet = writer.sheets['Compare']
                 total_row_idx = len(combined_df)
                 for col in range(len(combined_df.columns)):
-                    worksheet.cell(row=total_row_idx + 1, column=col + 1).font = Font(bold=True)
-                    if combined_df.columns[col] == 'Percent Change':
-                        for row in range(2, total_row_idx + 2):
-                            worksheet.cell(row=row, column=col + 1).number_format = '0.00%'
+                    cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
+                    cell.font = Font(bold=True)
+                    if combined_df.columns[col] == 'Change':
+                        cell.number_format = '0.00'  # Ensure Change column is not in percentage format
 
     return common_actype_present
 
@@ -130,7 +130,7 @@ def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
             common_df = pd.merge(
-                df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc']],
+                df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc', 'Name']],
                 df_this[['Main Code', 'Balance', 'Provision']],
                 on='Main Code',
                 suffixes=('_Previous', '_This')
@@ -153,7 +153,7 @@ def generate_slippage_report(df_previous, df_this, writer):
                 common_df.apply(
                     lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
                 )
-            ][['Main Code', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
+            ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_Previous', 'Provision_This']]
 
             filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
 

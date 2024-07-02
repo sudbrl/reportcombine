@@ -85,6 +85,7 @@ def read_excel_sheets(file):
 # Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
+    combined_df = pd.DataFrame()
     for sheet_name_1, df1 in sheets_1.items():
         for sheet_name_2, df2 in sheets_2.items():
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
@@ -114,15 +115,16 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 
                 combined_df = pd.concat([combined_df, total_row])
                 
-                combined_df.reset_index().to_excel(writer, sheet_name='Compare', index=False)
-                worksheet = writer.sheets['Compare']
-                total_row_idx = len(combined_df)
-                for col in range(len(combined_df.columns)):
-                    cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
-                    cell.font = Font(bold=True)
-                    if combined_df.columns[col] == 'Change':
-                        cell.number_format = '0.00'  # Ensure Change column is not in percentage format
-
+    if common_actype_present:
+        combined_df.reset_index().to_excel(writer, sheet_name='Compare', index=False)
+        worksheet = writer.sheets['Compare']
+        total_row_idx = len(combined_df)
+        for col in range(len(combined_df.columns)):
+            cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
+            cell.font = Font(bold=True)
+            if combined_df.columns[col] == 'Change':
+                cell.number_format = '0.00'  # Ensure Change column is not in percentage format
+    
     return common_actype_present
 
 # Function to generate the slippage report
@@ -185,8 +187,11 @@ def main():
 
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                        if common_actype_present:
+                            writer.sheets.move_to_end('Compare')  # Move Compare to the first sheet
+
                         compare_excel_files(df_previous, df_this, writer)
-                        calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
                         generate_slippage_report(df_previous, df_this, writer)
                         autofit_excel(writer)
                     

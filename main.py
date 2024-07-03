@@ -163,7 +163,33 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
-
+# Function to generate the Loan Quality summary sheet
+def generate_loan_quality_summary(df_this, writer):
+    df_this = preprocess_dataframe(df_this)
+    loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
+    
+    # Reorder columns
+    columns_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad']
+    loan_quality_summary = loan_quality_summary[columns_order]
+    
+    # Add Grand Total row for columns
+    loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
+    
+    # Calculate the sum for the 'Total' column
+    loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
+    
+    # Display or use your updated loan_quality_summary DataFrame
+    print(loan_quality_summary)
+    
+    # Reset index and write to Excel
+    loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
+    
+    # Bold font for the 'Grand Total' row
+    worksheet = writer.sheets['Loan Quality']
+    for col in range(len(loan_quality_summary.columns)):
+        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
+        cell.font = Font(bold=True)
+        
 # Main function to run the Streamlit app
 def main():
     st.title("Excel File Comparison Tool")
@@ -188,11 +214,10 @@ def main():
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-                        if common_actype_present:
-                            writer.sheets.move_to_end('Compare')  # Move Compare to the first sheet
-
+                        
                         compare_excel_files(df_previous, df_this, writer)
                         generate_slippage_report(df_previous, df_this, writer)
+                        generate_loan_quality_summary(df_this, writer)
                         autofit_excel(writer)
                     
                     output.seek(0)

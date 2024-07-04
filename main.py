@@ -166,11 +166,20 @@ def generate_slippage_report(df_previous, df_this, writer):
 # Function to generate the Loan Quality summary sheet
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
+    
+    # Define all possible provision categories
+    all_provision_categories = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad']
+    
+    # Create the pivot table
     loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
     
+    # Ensure all provision categories are present
+    for category in all_provision_categories:
+        if category not in loan_quality_summary.columns:
+            loan_quality_summary[category] = 0
+    
     # Reorder columns
-    columns_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad']
-    loan_quality_summary = loan_quality_summary[columns_order]
+    loan_quality_summary = loan_quality_summary[all_provision_categories]
     
     # Add Grand Total row for columns
     loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
@@ -189,7 +198,7 @@ def generate_loan_quality_summary(df_this, writer):
     for col in range(len(loan_quality_summary.columns)):
         cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
         cell.font = Font(bold=True)
-        
+
 # Main function to run the Streamlit app
 def main():
     st.title("Excel File Comparison Tool")

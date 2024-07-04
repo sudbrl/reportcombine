@@ -166,33 +166,22 @@ def generate_slippage_report(df_previous, df_this, writer):
 # Function to generate the Loan Quality summary sheet
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
-    
-    # Define all possible provision categories
-    all_provision_categories = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad']
-    
+
     # Create the pivot table
     loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
-    
-    # Ensure all provision categories are present
-    for category in all_provision_categories:
-        if category not in loan_quality_summary.columns:
-            loan_quality_summary[category] = 0
-    
-    # Reorder columns
-    loan_quality_summary = loan_quality_summary[all_provision_categories]
-    
+
     # Add Grand Total row for columns
     loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
-    
+
     # Calculate the sum for the 'Total' column
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
-    
+
     # Display or use your updated loan_quality_summary DataFrame
     print(loan_quality_summary)
-    
+
     # Reset index and write to Excel
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
-    
+
     # Bold font for the 'Grand Total' row
     worksheet = writer.sheets['Loan Quality']
     for col in range(len(loan_quality_summary.columns)):

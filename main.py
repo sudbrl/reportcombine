@@ -185,11 +185,8 @@ def generate_loan_quality_summary(df_this, writer):
     for col in range(len(loan_quality_summary.columns)):
         cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
         cell.font = Font(bold=True)
-
 # Main function to run the Streamlit app
 def main():
-    st.set_page_config(page_title="Excel File Comparison Tool")
-
     st.title("Excel File Comparison Tool")
 
     st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
@@ -197,29 +194,44 @@ def main():
     current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
 
     if previous_file and current_file:
-        start_processing_button = st.button("Start Processing", help="Click to start processing")
+        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
+        start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
 
         if start_processing_button:
-            progress_text = "Operation in progress. Please wait. ⏳"
-            my_progress_bar = st.progress(0)
-            status_text = st.empty()
+            with st.spinner("Processing... Please wait."):
+                try:
+                    previous_wb = load_workbook(previous_file)
+                    current_wb = load_workbook(current_file)
 
-            for percent_complete in range(0, 101):
-                time.sleep(0.02)
-                my_progress_bar.progress(percent_complete)
-                status_text.text(f"{progress_text} {percent_complete}%")
+                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                        st.error("Each workbook should only contain one sheet.")
+                    else:
+                        df_previous = pd.read_excel(previous_file)
+                        df_this = pd.read_excel(current_file)
 
-            status_text.text("Operation complete! ⌛")
-            my_progress_bar.empty()
+                        excel_sheets_1 = read_excel_sheets(previous_file)
+                        excel_sheets_2 = read_excel_sheets(current_file)
 
-            st.download_button(
-                label="Download Comparison Sheet",
-                data=b"Dummy data to download",
-                file_name="combined_comparison_output.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                            
+                            compare_excel_files(df_previous, df_this, writer)
+                            generate_slippage_report(df_previous, df_this, writer)
+                            generate_loan_quality_summary(df_this, writer)
+                            autofit_excel(writer)
+                        
+                        output.seek(0)
+                        st.success("Processing completed successfully!")
 
-            st.button("Rerun")
+                        st.download_button(
+                            label="Download Comparison Sheet",
+                            data=output,
+                            file_name="combined_comparison_output.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except Exception as e:
+                    st.error(f"An error occurred during processing: {e}")
 
 if __name__ == "__main__":
     main()

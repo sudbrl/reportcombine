@@ -163,6 +163,7 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
+
 # Function to generate the Loan Quality summary sheet
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
@@ -175,9 +176,6 @@ def generate_loan_quality_summary(df_this, writer):
 
     # Calculate the sum for the 'Total' column
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
-
-    # Display or use your updated loan_quality_summary DataFrame
-    print(loan_quality_summary)
 
     # Reset index and write to Excel
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
@@ -203,30 +201,36 @@ def main():
         if start_processing_button:
             with st.spinner("Processing... Please wait."):
                 try:
-                    df_previous = pd.read_excel(previous_file)
-                    df_this = pd.read_excel(current_file)
+                    previous_wb = load_workbook(previous_file)
+                    current_wb = load_workbook(current_file)
 
-                    excel_sheets_1 = read_excel_sheets(previous_file)
-                    excel_sheets_2 = read_excel_sheets(current_file)
+                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                        st.error("Each workbook should only contain one sheet.")
+                    else:
+                        df_previous = pd.read_excel(previous_file)
+                        df_this = pd.read_excel(current_file)
 
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                        excel_sheets_1 = read_excel_sheets(previous_file)
+                        excel_sheets_2 = read_excel_sheets(current_file)
+
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                            
+                            compare_excel_files(df_previous, df_this, writer)
+                            generate_slippage_report(df_previous, df_this, writer)
+                            generate_loan_quality_summary(df_this, writer)
+                            autofit_excel(writer)
                         
-                        compare_excel_files(df_previous, df_this, writer)
-                        generate_slippage_report(df_previous, df_this, writer)
-                        generate_loan_quality_summary(df_this, writer)
-                        autofit_excel(writer)
-                    
-                    output.seek(0)
-                    st.success("Processing completed successfully!")
+                        output.seek(0)
+                        st.success("Processing completed successfully!")
 
-                    st.download_button(
-                        label="Download Comparison Sheet",
-                        data=output,
-                        file_name="combined_comparison_output.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                        st.download_button(
+                            label="Download Comparison Sheet",
+                            data=output,
+                            file_name="combined_comparison_output.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
                 except Exception as e:
                     st.error(f"An error occurred during processing: {e}")
 

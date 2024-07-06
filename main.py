@@ -188,7 +188,7 @@ def generate_loan_quality_summary(df_this, writer):
 
 # Main function to run the Streamlit app
 def main():
-    st.set_page_config(page_title="Excel File Comparison Tool", layout="wide")
+    st.set_page_config(page_title="Excel File Comparison Tool")
 
     st.title("Excel File Comparison Tool")
 

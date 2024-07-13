@@ -45,6 +45,10 @@ def compare_excel_files(df_previous, df_this, writer):
     df_previous = preprocess_dataframe(df_previous)
     df_this = preprocess_dataframe(df_this)
 
+    # Ensure 'Main Code' columns are of the same type
+    df_previous['Main Code'] = df_previous['Main Code'].astype(str)
+    df_this['Main Code'] = df_this['Main Code'].astype(str)
+
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
 
@@ -131,6 +135,10 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
+            # Ensure 'Main Code' columns are of the same type
+            df_previous['Main Code'] = df_previous['Main Code'].astype(str)
+            df_this['Main Code'] = df_this['Main Code'].astype(str)
+
             common_df = pd.merge(
                 df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc', 'Name']],
                 df_this[['Main Code', 'Balance', 'Provision']],
@@ -164,7 +172,6 @@ def generate_slippage_report(df_previous, df_this, writer):
     else:
         st.warning("Provision column missing in one or both files.")
 
-# Function to generate the Loan Quality summary sheet
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
 
@@ -177,14 +184,23 @@ def generate_loan_quality_summary(df_this, writer):
     # Calculate the sum for the 'Total' column
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
 
-    # Reset index and write to Excel
-    loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
+    # Reset index
+    loan_quality_summary.reset_index(inplace=True)
+
+    # Ensure the columns are in the desired order
+    column_order = ['Ac Type Desc', 'Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
+    loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
+
+    # Write to Excel
+    loan_quality_summary.to_excel(writer, sheet_name='Loan Quality', index=False)
 
     # Bold font for the 'Grand Total' row
     worksheet = writer.sheets['Loan Quality']
     for col in range(len(loan_quality_summary.columns)):
         cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
         cell.font = Font(bold=True)
+
+
 # Main function to run the Streamlit app
 def main():
     st.title("Excel File Comparison Tool")

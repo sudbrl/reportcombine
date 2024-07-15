@@ -163,8 +163,6 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
-
-# Function to generate the Loan Quality summary sheet
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
 
@@ -176,6 +174,10 @@ def generate_loan_quality_summary(df_this, writer):
 
     # Calculate the sum for the 'Total' column
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
+
+    # Reorder the columns
+    column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
+    loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
 
     # Reset index and write to Excel
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)

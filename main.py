@@ -24,16 +24,30 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
-# Function to preprocess dataframes
 def preprocess_dataframe(df):
+    # List of loan types to exclude
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
         'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
     ]
+    
+    # Normalize 'Ac Type Desc' by stripping whitespace and converting to uppercase
+    df['Ac Type Desc'] = df['Ac Type Desc'].str.strip().str.upper()
+    
+    # Convert the exclusion list to uppercase to match the normalized 'Ac Type Desc'
+    loan_types_to_exclude = [loan_type.upper() for loan_type in loan_types_to_exclude]
+    
+    # Filter out specified loan types
     df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
+    
+    # Remove rows where 'Limit' is 0
     df = df[df['Limit'] != 0]
+    
+    # Exclude rows with specific 'Main Code' values
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
+    
     return df
+
 
 # Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):

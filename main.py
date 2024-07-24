@@ -15,7 +15,6 @@ hide_streamlit_style = """
     """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Function to adjust Excel column widths
 def autofit_excel(writer):
     for sheet_name in writer.sheets:
         worksheet = writer.sheets[sheet_name]
@@ -25,30 +24,17 @@ def autofit_excel(writer):
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
 def preprocess_dataframe(df):
-    # List of loan types to exclude
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
         'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
     ]
-    
-    # Normalize 'Ac Type Desc' by stripping whitespace and converting to uppercase
     df['Ac Type Desc'] = df['Ac Type Desc'].str.strip().str.upper()
-    
-    # Convert the exclusion list to uppercase to match the normalized 'Ac Type Desc'
     loan_types_to_exclude = [loan_type.upper() for loan_type in loan_types_to_exclude]
-    
-    # Filter out specified loan types
     df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
-    
-    # Remove rows where 'Limit' is 0
     df = df[df['Limit'] != 0]
-    
-    # Exclude rows with specific 'Main Code' values
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
-    
     return df
 
-# Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -57,14 +43,11 @@ def compare_excel_files(df_previous, df_this, writer):
 
     df_previous = preprocess_dataframe(df_previous)
     df_this = preprocess_dataframe(df_this)
-
-    # Convert 'Main Code' to string
     df_previous['Main Code'] = df_previous['Main Code'].astype(str)
     df_this['Main Code'] = df_this['Main Code'].astype(str)
 
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
-
     only_in_previous = df_previous.loc[df_previous['Main Code'].isin(previous_codes - this_codes)]
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
@@ -94,12 +77,10 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
-# Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
 
-# Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
     combined_df = pd.DataFrame()
@@ -143,11 +124,10 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
-                cell.number_format = '0.00'  # Ensure Change column is not in percentage format
+                cell.number_format = '0.00'
     
     return common_actype_present
 
-# Function to generate the slippage report
 def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
@@ -193,25 +173,28 @@ def main():
 
     if st.button('Compare Files'):
         if previous_file and this_file:
-            sheets_1 = read_excel_sheets(previous_file)
-            sheets_2 = read_excel_sheets(this_file)
+            try:
+                sheets_1 = read_excel_sheets(previous_file)
+                sheets_2 = read_excel_sheets(this_file)
 
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                common_actype_desc_found = calculate_common_actype_desc(sheets_1, sheets_2, writer)
-                if not common_actype_desc_found:
-                    st.write("No common 'Ac Type Desc' columns found in the uploaded files.")
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    common_actype_desc_found = calculate_common_actype_desc(sheets_1, sheets_2, writer)
+                    if not common_actype_desc_found:
+                        st.write("No common 'Ac Type Desc' columns found in the uploaded files.")
 
-                for sheet_name_1, df1 in sheets_1.items():
-                    for sheet_name_2, df2 in sheets_2.items():
-                        compare_excel_files(df1.compute(), df2.compute(), writer)
-                        generate_slippage_report(df1.compute(), df2.compute(), writer)
-                
-                autofit_excel(writer)
+                    for sheet_name_1, df1 in sheets_1.items():
+                        for sheet_name_2, df2 in sheets_2.items():
+                            compare_excel_files(df1.compute(), df2.compute(), writer)
+                            generate_slippage_report(df1.compute(), df2.compute(), writer)
+                    
+                    autofit_excel(writer)
 
-            st.success('Comparison completed. Download the result:')
-            output.seek(0)
-            st.download_button(label='Download Excel File', data=output, file_name='comparison_result.xlsx')
+                st.success('Comparison completed. Download the result:')
+                output.seek(0)
+                st.download_button(label='Download Excel File', data=output, file_name='comparison_result.xlsx')
+            except Exception as e:
+                st.write(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

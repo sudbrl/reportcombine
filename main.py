@@ -48,7 +48,6 @@ def preprocess_dataframe(df):
     
     return df
 
-
 # Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
@@ -58,6 +57,10 @@ def compare_excel_files(df_previous, df_this, writer):
 
     df_previous = preprocess_dataframe(df_previous)
     df_this = preprocess_dataframe(df_this)
+
+    # Convert 'Main Code' to string
+    df_previous['Main Code'] = df_previous['Main Code'].astype(str)
+    df_this['Main Code'] = df_this['Main Code'].astype(str)
 
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
@@ -110,6 +113,9 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
 
+                df1['Main Code'] = df1['Main Code'].astype(str)
+                df2['Main Code'] = df2['Main Code'].astype(str)
+
                 df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
                 df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
                 
@@ -145,6 +151,9 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
+            df_previous['Main Code'] = df_previous['Main Code'].astype(str)
+            df_this['Main Code'] = df_this['Main Code'].astype(str)
+            
             common_df = pd.merge(
                 df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc', 'Name']],
                 df_this[['Main Code', 'Balance', 'Provision']],
@@ -172,83 +181,37 @@ def generate_slippage_report(df_previous, df_this, writer):
             ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
 
             filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
-
         except Exception as e:
-            st.error(f"An error occurred in the slippage report: {e}")
-    else:
-        st.warning("Provision column missing in one or both files.")
-def generate_loan_quality_summary(df_this, writer):
-    df_this = preprocess_dataframe(df_this)
+            st.write(f"Error generating Slippage report: {e}")
 
-    # Create the pivot table
-    loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
-
-    # Add Grand Total row for columns
-    loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
-
-    # Calculate the sum for the 'Total' column
-    loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
-
-    # Reorder the columns
-    column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
-    loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
-
-    # Reset index and write to Excel
-    loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
-
-    # Bold font for the 'Grand Total' row
-    worksheet = writer.sheets['Loan Quality']
-    for col in range(len(loan_quality_summary.columns)):
-        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
-        cell.font = Font(bold=True)
-
-# Main function to run the Streamlit app
+# Streamlit app interface
 def main():
-    st.title("Excel File Comparison Tool")
+    st.title('Excel Comparison Tool')
 
-    st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
-    previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
-    current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
+    previous_file = st.file_uploader("Upload Previous Excel File", type=['xlsx'])
+    this_file = st.file_uploader("Upload This Excel File", type=['xlsx'])
 
-    if previous_file and current_file:
-        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
-        start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
+    if st.button('Compare Files'):
+        if previous_file and this_file:
+            sheets_1 = read_excel_sheets(previous_file)
+            sheets_2 = read_excel_sheets(this_file)
 
-        if start_processing_button:
-            with st.spinner("Processing... Please wait."):
-                try:
-                    previous_wb = load_workbook(previous_file)
-                    current_wb = load_workbook(current_file)
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                common_actype_desc_found = calculate_common_actype_desc(sheets_1, sheets_2, writer)
+                if not common_actype_desc_found:
+                    st.write("No common 'Ac Type Desc' columns found in the uploaded files.")
 
-                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
-                        st.error("Each workbook should only contain one sheet.")
-                    else:
-                        df_previous = pd.read_excel(previous_file)
-                        df_this = pd.read_excel(current_file)
+                for sheet_name_1, df1 in sheets_1.items():
+                    for sheet_name_2, df2 in sheets_2.items():
+                        compare_excel_files(df1.compute(), df2.compute(), writer)
+                        generate_slippage_report(df1.compute(), df2.compute(), writer)
+                
+                autofit_excel(writer)
 
-                        excel_sheets_1 = read_excel_sheets(previous_file)
-                        excel_sheets_2 = read_excel_sheets(current_file)
-
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-                            
-                            compare_excel_files(df_previous, df_this, writer)
-                            generate_slippage_report(df_previous, df_this, writer)
-                            generate_loan_quality_summary(df_this, writer)
-                            autofit_excel(writer)
-                        
-                        output.seek(0)
-                        st.success("Processing completed successfully!")
-
-                        st.download_button(
-                            label="Download Comparison Sheet",
-                            data=output,
-                            file_name="combined_comparison_output.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                except Exception as e:
-                    st.error(f"An error occurred during processing: {e}")
+            st.success('Comparison completed. Download the result:')
+            output.seek(0)
+            st.download_button(label='Download Excel File', data=output, file_name='comparison_result.xlsx')
 
 if __name__ == "__main__":
     main()

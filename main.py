@@ -5,17 +5,15 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
-
-# Hide the main menu, footer, and header in Streamlit
+# Hides the main menu, footer, and header
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
-"""
+    """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
 
 # Function to adjust Excel column widths
 def autofit_excel(writer):
@@ -26,20 +24,32 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
-
 def preprocess_dataframe(df):
+    # List of loan types to exclude
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
         'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
     ]
+    
+    # Normalize 'Ac Type Desc' by stripping whitespace and converting to uppercase
     df['Ac Type Desc'] = df['Ac Type Desc'].str.strip().str.upper()
+    
+    # Convert the exclusion list to uppercase to match the normalized 'Ac Type Desc'
     loan_types_to_exclude = [loan_type.upper() for loan_type in loan_types_to_exclude]
+    
+    # Filter out specified loan types
     df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
+    
+    # Remove rows where 'Limit' is 0
     df = df[df['Limit'] != 0]
+    
+    # Exclude rows with specific 'Main Code' values
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
+    
     return df
 
 
+# Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -56,7 +66,7 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code', 'Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
+        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -66,46 +76,25 @@ def compare_excel_files(df_previous, df_this, writer):
     settled_sum = only_in_previous['Balance'].sum()
     new_sum = only_in_this['Balance'].sum()
     increase_decrease_sum = in_both['Change'].sum()
+    adjusted_sum = opening_sum - settled_sum + new_sum + increase_decrease_sum
     closing_sum = df_this['Balance'].sum()
-
-    # Generate Excel formula for 'Adjusted'
-    adjusted_sum_formula = "=B2 - B3 + B4 + B5"
 
     reco_data = {
         'Description': ['Opening', 'Settled', 'New', 'Increase/Decrease', 'Adjusted', 'Closing'],
-        'Amount': [opening_sum, settled_sum, new_sum, increase_decrease_sum, adjusted_sum_formula, closing_sum],
+        'Amount': [opening_sum, settled_sum, new_sum, increase_decrease_sum, adjusted_sum, closing_sum],
         'No of Acs': [len(previous_codes), len(previous_codes - this_codes), len(this_codes - previous_codes), "", "", len(this_codes)]
     }
     df_reco = pd.DataFrame(reco_data)
 
-    # Write data to Excel
     only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
     only_in_this.to_excel(writer, sheet_name='New', index=False)
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
-    
-    # Write the reconciliation summary
-    df_reco.to_excel(writer, sheet_name='Reco', index=False, header=False)
-
-    # Insert headers and formula in the Adjusted row
-    worksheet = writer.sheets['Reco']
-    worksheet.write('A1', 'Description')
-    worksheet.write('B1', 'Amount')
-    worksheet.write('C1', 'No of Acs')
-
-    for idx, row in df_reco.iterrows():
-        worksheet.write(idx + 1, 0, row['Description'])
-        if idx == 4:  # Insert formula for 'Adjusted'
-            worksheet.write_formula(idx + 1, 1, adjusted_sum_formula)
-        else:
-            worksheet.write(idx + 1, 1, row['Amount'])
-        worksheet.write(idx + 1, 2, row['No of Acs'])
-
+    df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
 # Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
-
 
 # Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
@@ -148,10 +137,9 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
-                cell.number_format = '0.00'
+                cell.number_format = '0.00'  # Ensure Change column is not in percentage format
     
     return common_actype_present
-
 
 # Function to generate the slippage report
 def generate_slippage_report(df_previous, df_this, writer):
@@ -189,44 +177,78 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
+def generate_loan_quality_summary(df_this, writer):
+    df_this = preprocess_dataframe(df_this)
 
+    # Create the pivot table
+    loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
 
-# Main Streamlit app logic
+    # Add Grand Total row for columns
+    loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
+
+    # Calculate the sum for the 'Total' column
+    loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
+
+    # Reorder the columns
+    column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
+    loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
+
+    # Reset index and write to Excel
+    loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
+
+    # Bold font for the 'Grand Total' row
+    worksheet = writer.sheets['Loan Quality']
+    for col in range(len(loan_quality_summary.columns)):
+        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
+        cell.font = Font(bold=True)
+
+# Main function to run the Streamlit app
 def main():
-    st.title("Excel Comparison Tool")
-    
-    file1 = st.file_uploader("Upload Previous Excel File", type=["xlsx"])
-    file2 = st.file_uploader("Upload Current Excel File", type=["xlsx"])
-    
-    if file1 and file2:
-        sheets_1 = read_excel_sheets(file1)
-        sheets_2 = read_excel_sheets(file2)
-        
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            common_actype_present = calculate_common_actype_desc(sheets_1, sheets_2, writer)
+    st.title("Excel File Comparison Tool")
 
-            for sheet_name_1, df1 in sheets_1.items():
-                if 'Main Code' in df1.columns and 'Balance' in df1.columns:
-                    for sheet_name_2, df2 in sheets_2.items():
-                        if 'Main Code' in df2.columns and 'Balance' in df2.columns:
-                            compare_excel_files(df1.compute(), df2.compute(), writer)
+    st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
+    previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
+    current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
 
-            generate_slippage_report(sheets_1['sheet_name'], sheets_2['sheet_name'], writer)
+    if previous_file and current_file:
+        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
+        start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
 
-            if not common_actype_present:
-                st.warning("No matching 'Ac Type Desc' found between the two files.")
+        if start_processing_button:
+            with st.spinner("Processing... Please wait."):
+                try:
+                    previous_wb = load_workbook(previous_file)
+                    current_wb = load_workbook(current_file)
 
-            autofit_excel(writer)
-        
-        st.success("Comparison and reports generated successfully!")
-        st.download_button(
-            label="Download Excel Report",
-            data=output.getvalue(),
-            file_name="comparison_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                        st.error("Each workbook should only contain one sheet.")
+                    else:
+                        df_previous = pd.read_excel(previous_file)
+                        df_this = pd.read_excel(current_file)
 
+                        excel_sheets_1 = read_excel_sheets(previous_file)
+                        excel_sheets_2 = read_excel_sheets(current_file)
+
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                            
+                            compare_excel_files(df_previous, df_this, writer)
+                            generate_slippage_report(df_previous, df_this, writer)
+                            generate_loan_quality_summary(df_this, writer)
+                            autofit_excel(writer)
+                        
+                        output.seek(0)
+                        st.success("Processing completed successfully!")
+
+                        st.download_button(
+                            label="Download Comparison Sheet",
+                            data=output,
+                            file_name="combined_comparison_output.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except Exception as e:
+                    st.error(f"An error occurred during processing: {e}")
 
 if __name__ == "__main__":
     main()

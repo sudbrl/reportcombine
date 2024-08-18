@@ -49,7 +49,6 @@ def preprocess_dataframe(df):
     return df
 
 
-# Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -76,20 +75,39 @@ def compare_excel_files(df_previous, df_this, writer):
     settled_sum = only_in_previous['Balance'].sum()
     new_sum = only_in_this['Balance'].sum()
     increase_decrease_sum = in_both['Change'].sum()
-    adjusted_sum = opening_sum - settled_sum + new_sum + increase_decrease_sum
     closing_sum = df_this['Balance'].sum()
+
+    # Generate the Excel formula string
+    adjusted_sum_formula = f"=B2 - B3 + B4 + B5"
 
     reco_data = {
         'Description': ['Opening', 'Settled', 'New', 'Increase/Decrease', 'Adjusted', 'Closing'],
-        'Amount': [opening_sum, settled_sum, new_sum, increase_decrease_sum, adjusted_sum, closing_sum],
+        'Amount': [opening_sum, settled_sum, new_sum, increase_decrease_sum, adjusted_sum_formula, closing_sum],
         'No of Acs': [len(previous_codes), len(previous_codes - this_codes), len(this_codes - previous_codes), "", "", len(this_codes)]
     }
     df_reco = pd.DataFrame(reco_data)
 
+    # Write the DataFrames to Excel sheets
     only_in_previous.to_excel(writer, sheet_name='Settled', index=False)
     only_in_this.to_excel(writer, sheet_name='New', index=False)
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
-    df_reco.to_excel(writer, sheet_name='Reco', index=False)
+    df_reco.to_excel(writer, sheet_name='Reco', index=False, header=False)
+
+    # Writing headers manually to insert the formula correctly
+    with pd.ExcelWriter(writer, engine='xlsxwriter') as workbook:
+        worksheet = workbook.sheets['Reco']
+        worksheet.write('A1', 'Description')
+        worksheet.write('B1', 'Amount')
+        worksheet.write('C1', 'No of Acs')
+
+        # Write the headers and the formula as a string
+        for i, row in df_reco.iterrows():
+            worksheet.write(i + 1, 0, row['Description'])
+            if i == 4:  # Insert the formula in the 'Adjusted' row
+                worksheet.write_formula(i + 1, 1, adjusted_sum_formula)
+            else:
+                worksheet.write(i + 1, 1, row['Amount'])
+            worksheet.write(i + 1, 2, row['No of Acs'])
 
 # Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):

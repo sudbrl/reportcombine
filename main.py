@@ -82,7 +82,7 @@ def compare_excel_files(df_previous, df_this, writer):
     reco_data = {
         'Description': ['Opening', 'Settled', 'New', 'Increase/Decrease', 'Adjusted', 'Closing'],
         'Amount': [opening_sum, -settled_sum, new_sum, increase_decrease_sum, adjusted_sum, closing_sum],
-        'No of Acs': [len(previous_codes), len(previous_codes - this_codes), len(this_codes - previous_codes), "", "", len(this_codes)]
+        'No of Acs': [len(previous_codes), -len(previous_codes - this_codes), len(this_codes - previous_codes), "", "", len(this_codes)]
     }
     df_reco = pd.DataFrame(reco_data)
 

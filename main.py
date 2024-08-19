@@ -5,14 +5,6 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
-# Define your credentials
-USERNAME = 'admin'
-PASSWORD = '123Punte@'
-
-# Authentication function
-def authenticate(username, password):
-    return username == USERNAME and password == PASSWORD
-
 # Hides the main menu, footer, and header
 hide_streamlit_style = """
     <style>
@@ -22,6 +14,15 @@ hide_streamlit_style = """
     </style>
     """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Function to adjust Excel column widths
+def autofit_excel(writer):
+    for sheet_name in writer.sheets:
+        worksheet = writer.sheets[sheet_name]
+        for column_cells in worksheet.columns:
+            max_length = max((len(str(cell.value)) for cell in column_cells), default=0)
+            adjusted_width = max_length + 2
+            worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
 def preprocess_dataframe(df):
     # List of loan types to exclude
@@ -47,14 +48,8 @@ def preprocess_dataframe(df):
     
     return df
 
-def autofit_excel(writer):
-    for sheet_name in writer.sheets:
-        worksheet = writer.sheets[sheet_name]
-        for column_cells in worksheet.columns:
-            max_length = max((len(str(cell.value)) for cell in column_cells), default=0)
-            adjusted_width = max_length + 2
-            worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
+# Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -96,10 +91,12 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
+# Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
 
+# Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
     combined_df = pd.DataFrame()
@@ -144,6 +141,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     
     return common_actype_present
 
+# Function to generate the slippage report
 def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
@@ -179,7 +177,6 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
-
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
 
@@ -209,23 +206,6 @@ def generate_loan_quality_summary(df_this, writer):
 def main():
     st.title("Excel File Comparison Tool")
 
-    # Authentication
-    if 'authenticated' not in st.session_state:
-        with st.form(key='login_form'):
-            st.subheader("Login")
-            username = st.text_input("Username")
-            password = st.text_input("Password", type='password')
-            submit_button = st.form_submit_button("Login")
-
-            if submit_button:
-                if authenticate(username, password):
-                    st.session_state.authenticated = True
-                    st.success("Authenticated successfully!")
-                else:
-                    st.error("Invalid username or password.")
-        return
-
-    # Main content
     st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
     previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
     current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])

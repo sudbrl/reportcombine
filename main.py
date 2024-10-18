@@ -28,7 +28,7 @@ def preprocess_dataframe(df):
     # List of loan types to exclude
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
-        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)'
+        'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)', 'STAFF VEHICLE FACILITY LOAN (EVF)'
     ]
     
     # Normalize 'Ac Type Desc' by stripping whitespace and converting to uppercase

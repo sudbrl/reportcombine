@@ -24,6 +24,7 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
+# Preprocess the dataframe to filter out unwanted rows
 def preprocess_dataframe(df):
     # List of loan types to exclude
     loan_types_to_exclude = [
@@ -65,7 +66,7 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
+        df_this[['Main Code', 'Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )

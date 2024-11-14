@@ -24,7 +24,6 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
-# Preprocess the dataframe to filter out unwanted rows
 def preprocess_dataframe(df):
     # List of loan types to exclude
     loan_types_to_exclude = [
@@ -41,13 +40,14 @@ def preprocess_dataframe(df):
     # Filter out specified loan types
     df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
     
-    # Remove rows where both 'Limit' and 'Balance' are 0
-    df = df[(df['Limit'] != 0) | (df['Balance'] != 0)]
+    # Remove rows where 'Limit' is 0
+    df = df[df['Limit'] != 0]
     
     # Exclude rows with specific 'Main Code' values
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
     
     return df
+
 
 # Function to compare two Excel files and generate a summary
 def compare_excel_files(df_previous, df_this, writer):
@@ -66,7 +66,7 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code', 'Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
+        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -177,25 +177,29 @@ def generate_slippage_report(df_previous, df_this, writer):
             st.error(f"An error occurred in the slippage report: {e}")
     else:
         st.warning("Provision column missing in one or both files.")
-
-# Function to generate loan quality summary
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
 
+    # Create the pivot table
     loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
 
+    # Add Grand Total row for columns
     loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
 
+    # Calculate the sum for the 'Total' column
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
 
+    # Reorder the columns
     column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
     loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
 
+    # Reset index and write to Excel
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
 
+    # Bold font for the 'Grand Total' row
     worksheet = writer.sheets['Loan Quality']
     for col in range(len(loan_quality_summary.columns)):
-        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)
+        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
         cell.font = Font(bold=True)
 
 # Main function to run the Streamlit app

@@ -5,17 +5,17 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
-# Hides the main menu, footer, and header
+# Hide Streamlit style
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
-    """
+"""
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Function to adjust Excel column widths
+# Autofit Excel columns
 def autofit_excel(writer):
     for sheet_name in writer.sheets:
         worksheet = writer.sheets[sheet_name]
@@ -24,6 +24,7 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
+# Preprocess dataframe
 def preprocess_dataframe(df):
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
@@ -36,6 +37,7 @@ def preprocess_dataframe(df):
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
     return df
 
+# Compare Excel files
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -52,7 +54,7 @@ def compare_excel_files(df_previous, df_this, writer):
     only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
+        df_this[['Main Code', 'Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -77,10 +79,12 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
+# Read Excel sheets
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
 
+# Calculate by Ac Type Desc (existing Compare sheet)
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
     combined_df = pd.DataFrame()
@@ -88,18 +92,16 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
         for sheet_name_2, df2 in sheets_2.items():
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
-                
                 common_actype_present = True
-
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
 
                 df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
                 df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
-                
+
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
-                
+
                 combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer').fillna(0)
                 combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
                 combined_df['Percent Change'] = ((combined_df['Change'] / combined_df['Previous Balance Sum'].replace({0: pd.NA})) * 100).fillna(0).map('{:.2f}%'.format)
@@ -112,7 +114,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
                 combined_df = pd.concat([combined_df, total_row])
-                
+
     if common_actype_present:
         combined_df.reset_index().to_excel(writer, sheet_name='Compare', index=False)
         worksheet = writer.sheets['Compare']
@@ -122,29 +124,27 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
                 cell.number_format = '0.00'
-    
+
     return common_actype_present
 
-# NEW FUNCTION: Branch grouping
+# ✨ New function for Branch sheet
 def calculate_common_branchcode(sheets_1, sheets_2, writer):
-    common_branch_present = False
+    branch_present = False
     combined_df = pd.DataFrame()
     for sheet_name_1, df1 in sheets_1.items():
         for sheet_name_2, df2 in sheets_2.items():
             if all(col in df1.columns for col in ['Branch Code', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Branch Code', 'Balance', 'Main Code', 'Limit']):
-                
-                common_branch_present = True
-
+                branch_present = True
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
 
                 df1_grouped = df1.groupby('Branch Code').agg({'Balance': 'sum', 'Branch Code': 'count'})
                 df2_grouped = df2.groupby('Branch Code').agg({'Balance': 'sum', 'Branch Code': 'count'})
-                
+
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
-                
+
                 combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer').fillna(0)
                 combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
                 combined_df['Percent Change'] = ((combined_df['Change'] / combined_df['Previous Balance Sum'].replace({0: pd.NA})) * 100).fillna(0).map('{:.2f}%'.format)
@@ -158,18 +158,26 @@ def calculate_common_branchcode(sheets_1, sheets_2, writer):
 
                 combined_df = pd.concat([combined_df, total_row])
 
-    if common_branch_present:
+    if branch_present:
         combined_df.reset_index().to_excel(writer, sheet_name='Branch', index=False)
         worksheet = writer.sheets['Branch']
+
+        # 📌 Set Branch Code column to Text
+        for row in worksheet.iter_rows(min_row=2, min_col=1, max_col=1):
+            for cell in row:
+                cell.number_format = '@'
+
+        # 📌 Bold total row
         total_row_idx = len(combined_df)
         for col in range(len(combined_df.columns)):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
                 cell.number_format = '0.00'
-    
-    return common_branch_present
 
+    return branch_present
+
+# Slippage Report
 def generate_slippage_report(df_previous, df_this, writer):
     if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
         try:
@@ -206,32 +214,30 @@ def generate_slippage_report(df_previous, df_this, writer):
     else:
         st.warning("Provision column missing in one or both files.")
 
+# Loan Quality Summary
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
     loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
     loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
-
     column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
     loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
-
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
-
     worksheet = writer.sheets['Loan Quality']
     for col in range(len(loan_quality_summary.columns)):
         cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)
         cell.font = Font(bold=True)
 
+# Streamlit main app
 def main():
     st.title("Excel File Comparison Tool")
+    st.write("Upload previous and current period Excel files to compare them.")
 
-    st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
     previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
     current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
 
     if previous_file and current_file:
-        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
-        start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
+        start_processing_button = st.button("Start Processing")
 
         if start_processing_button:
             with st.spinner("Processing... Please wait."):

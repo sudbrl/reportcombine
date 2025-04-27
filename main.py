@@ -5,17 +5,17 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
-# Hide Streamlit style
+# Hide main menu, footer, header
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
-"""
+    """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Autofit Excel columns
+# Autofit function
 def autofit_excel(writer):
     for sheet_name in writer.sheets:
         worksheet = writer.sheets[sheet_name]
@@ -24,7 +24,7 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
-# Preprocess dataframe
+# Preprocessing function
 def preprocess_dataframe(df):
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
@@ -37,7 +37,7 @@ def preprocess_dataframe(df):
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
     return df
 
-# Compare Excel files
+# Compare previous and current Excel
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -79,12 +79,12 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
-# Read Excel sheets
+# Read Excel Sheets into Dask
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
 
-# Calculate by Ac Type Desc (existing Compare sheet)
+# Compare Ac Type Desc
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
     combined_df = pd.DataFrame()
@@ -92,6 +92,7 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
         for sheet_name_2, df2 in sheets_2.items():
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
+
                 common_actype_present = True
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
@@ -127,17 +128,22 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
 
     return common_actype_present
 
-# ✨ New function for Branch sheet
+# 🔥 Compare Branch Code
 def calculate_common_branchcode(sheets_1, sheets_2, writer):
     branch_present = False
     combined_df = pd.DataFrame()
+
     for sheet_name_1, df1 in sheets_1.items():
         for sheet_name_2, df2 in sheets_2.items():
             if all(col in df1.columns for col in ['Branch Code', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Branch Code', 'Balance', 'Main Code', 'Limit']):
+
                 branch_present = True
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
+
+                df1['Branch Code'] = df1['Branch Code'].astype(str).str.zfill(3)
+                df2['Branch Code'] = df2['Branch Code'].astype(str).str.zfill(3)
 
                 df1_grouped = df1.groupby('Branch Code').agg({'Balance': 'sum', 'Branch Code': 'count'})
                 df2_grouped = df2.groupby('Branch Code').agg({'Balance': 'sum', 'Branch Code': 'count'})
@@ -159,20 +165,20 @@ def calculate_common_branchcode(sheets_1, sheets_2, writer):
                 combined_df = pd.concat([combined_df, total_row])
 
     if branch_present:
-        combined_df.reset_index().to_excel(writer, sheet_name='Branch', index=False)
+        combined_df.to_excel(writer, sheet_name='Branch', index=True)
         worksheet = writer.sheets['Branch']
 
-        # 📌 Set Branch Code column to Text
+        # Text format for Branch Code
         for row in worksheet.iter_rows(min_row=2, min_col=1, max_col=1):
             for cell in row:
                 cell.number_format = '@'
 
-        # 📌 Bold total row
+        # Bold for total row
         total_row_idx = len(combined_df)
-        for col in range(len(combined_df.columns)):
-            cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
+        for col in range(1, len(combined_df.columns) + 2):
+            cell = worksheet.cell(row=total_row_idx + 1, column=col)
             cell.font = Font(bold=True)
-            if combined_df.columns[col] == 'Change':
+            if col == combined_df.columns.get_loc('Change') + 2:
                 cell.number_format = '0.00'
 
     return branch_present
@@ -189,49 +195,42 @@ def generate_slippage_report(df_previous, df_this, writer):
             )
 
             provision_pairs = [
-                ('Good', 'WatchList'),
-                ('WatchList', 'Substandard'),
-                ('Good', 'Substandard'),
-                ('Substandard', 'Doubtful'),
-                ('Substandard', 'Bad'),
-                ('WatchList', 'Doubtful'),
-                ('Good', 'Doubtful'),
-                ('Doubtful', 'Bad'),
-                ('WatchList', 'Bad'),
-                ('Good', 'Bad')
+                ('Good', 'WatchList'), ('WatchList', 'Substandard'), ('Good', 'Substandard'),
+                ('Substandard', 'Doubtful'), ('Substandard', 'Bad'), ('WatchList', 'Doubtful'),
+                ('Good', 'Doubtful'), ('Doubtful', 'Bad'), ('WatchList', 'Bad'), ('Good', 'Bad')
             ]
 
             filtered_df = common_df[
-                common_df.apply(
-                    lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
-                )
+                common_df.apply(lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1)
             ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
 
             filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
 
         except Exception as e:
-            st.error(f"An error occurred in the slippage report: {e}")
+            st.error(f"Error in slippage report: {e}")
     else:
-        st.warning("Provision column missing in one or both files.")
+        st.warning("Provision column missing.")
 
-# Loan Quality Summary
+# Loan Quality Report
 def generate_loan_quality_summary(df_this, writer):
     df_this = preprocess_dataframe(df_this)
     loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
     loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
     loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
+
     column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
     loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
+
     loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
+
     worksheet = writer.sheets['Loan Quality']
     for col in range(len(loan_quality_summary.columns)):
         cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)
         cell.font = Font(bold=True)
 
-# Streamlit main app
+# Main Streamlit App
 def main():
     st.title("Excel File Comparison Tool")
-    st.write("Upload previous and current period Excel files to compare them.")
 
     previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
     current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
@@ -273,7 +272,7 @@ def main():
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                 except Exception as e:
-                    st.error(f"An error occurred during processing: {e}")
+                    st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

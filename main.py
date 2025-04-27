@@ -91,10 +91,12 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
+
 # Function to read Excel sheets into Dask DataFrames
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
+
 
 # Function to compare 'Ac Type Desc' across Excel sheets and generate summary
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
@@ -141,66 +143,57 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     
     return common_actype_present
 
-# Function to generate the slippage report
-def generate_slippage_report(df_previous, df_this, writer):
-    if 'Provision' in df_previous.columns and 'Provision' in df_this.columns:
-        try:
-            common_df = pd.merge(
-                df_previous[['Main Code', 'Provision', 'Branch Name', 'Ac Type Desc', 'Name']],
-                df_this[['Main Code', 'Balance', 'Provision']],
-                on='Main Code',
-                suffixes=('_Previous', '_This')
-            )
 
-            provision_pairs = [
-                ('Good', 'WatchList'),
-                ('WatchList', 'Substandard'),
-                ('Good', 'Substandard'),
-                ('Substandard', 'Doubtful'),
-                ('Substandard', 'Bad'),
-                ('WatchList', 'Doubtful'),
-                ('Good', 'Doubtful'),
-                ('Doubtful', 'Bad'),
-                ('WatchList', 'Bad'),
-                ('Good', 'Bad')
-            ]
+# Function to compare 'Branch Name' across Excel sheets and generate summary
+def calculate_common_branch_name(sheets_1, sheets_2, writer):
+    common_branch_present = False
+    combined_df = pd.DataFrame()
+    
+    for sheet_name_1, df1 in sheets_1.items():
+        for sheet_name_2, df2 in sheets_2.items():
+            if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
+               all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
+                
+                common_branch_present = True
 
-            filtered_df = common_df[
-                common_df.apply(
-                    lambda row: (row['Provision_Previous'], row['Provision_This']) in provision_pairs, axis=1
-                )
-            ][['Main Code', 'Name', 'Branch Name', 'Ac Type Desc', 'Balance', 'Provision_This', 'Provision_Previous']]
+                df1 = preprocess_dataframe(df1.compute())
+                df2 = preprocess_dataframe(df2.compute())
 
-            filtered_df.to_excel(writer, sheet_name='Slippage', index=False)
+                # Group by 'Branch Name' instead of 'Ac Type Desc'
+                df1_grouped = df1.groupby('Branch Name').agg({'Balance': 'sum', 'Branch Name': 'count'})
+                df2_grouped = df2.groupby('Branch Name').agg({'Balance': 'sum', 'Branch Name': 'count'})
+                
+                df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
+                df2_grouped.columns = ['New Balance Sum', 'New Count']
+                
+                # Merge the dataframes on 'Branch Name'
+                combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer').fillna(0)
+                combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
+                combined_df['Percent Change'] = ((combined_df['Change'] / combined_df['Previous Balance Sum'].replace({0: pd.NA})) * 100).fillna(0).map('{:.2f}%'.format)
 
-        except Exception as e:
-            st.error(f"An error occurred in the slippage report: {e}")
-    else:
-        st.warning("Provision column missing in one or both files.")
-def generate_loan_quality_summary(df_this, writer):
-    df_this = preprocess_dataframe(df_this)
+                # Calculate total row
+                total_row = pd.DataFrame(combined_df.sum()).transpose()
+                total_row.index = ['Total']
+                total_prev_balance = total_row.at['Total', 'Previous Balance Sum']
+                total_new_balance = total_row.at['Total', 'New Balance Sum']
+                overall_percent_change = (total_new_balance - total_prev_balance) / total_prev_balance * 100 if total_prev_balance != 0 else 0
+                total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
 
-    # Create the pivot table
-    loan_quality_summary = df_this.pivot_table(index='Ac Type Desc', columns='Provision', values='Balance', aggfunc='sum').fillna(0)
+                # Append the total row
+                combined_df = pd.concat([combined_df, total_row])
+                
+    if common_branch_present:
+        combined_df.reset_index().to_excel(writer, sheet_name='Compare by Branch Name', index=False)
+        worksheet = writer.sheets['Compare by Branch Name']
+        total_row_idx = len(combined_df)
+        for col in range(len(combined_df.columns)):
+            cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
+            cell.font = Font(bold=True)
+            if combined_df.columns[col] == 'Change':
+                cell.number_format = '0.00'  # Ensure 'Change' column is not in percentage format
+    
+    return common_branch_present
 
-    # Add Grand Total row for columns
-    loan_quality_summary.loc['Grand Total'] = loan_quality_summary.sum()
-
-    # Calculate the sum for the 'Total' column
-    loan_quality_summary['Total'] = loan_quality_summary.sum(axis=1)
-
-    # Reorder the columns
-    column_order = ['Good', 'WatchList', 'Substandard', 'Doubtful', 'Bad', 'Total']
-    loan_quality_summary = loan_quality_summary.reindex(columns=column_order)
-
-    # Reset index and write to Excel
-    loan_quality_summary.reset_index().to_excel(writer, sheet_name='Loan Quality', index=False)
-
-    # Bold font for the 'Grand Total' row
-    worksheet = writer.sheets['Loan Quality']
-    for col in range(len(loan_quality_summary.columns)):
-        cell = worksheet.cell(row=len(loan_quality_summary) + 1, column=col + 2)  # +2 to account for 1-based index and Total column
-        cell.font = Font(bold=True)
 
 # Main function to run the Streamlit app
 def main():
@@ -216,6 +209,7 @@ def main():
 
         if start_processing_button:
             with st.spinner("Processing... Please wait."):
+
                 try:
                     previous_wb = load_workbook(previous_file)
                     current_wb = load_workbook(current_file)
@@ -231,13 +225,16 @@ def main():
 
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            # Generate the Compare by Ac Type Desc sheet
                             common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
                             
+                            # Generate the Compare by Branch Name sheet
+                            common_branch_present = calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
+                            
+                            # Process other reports
                             compare_excel_files(df_previous, df_this, writer)
-                            generate_slippage_report(df_previous, df_this, writer)
-                            generate_loan_quality_summary(df_this, writer)
                             autofit_excel(writer)
-                        
+
                         output.seek(0)
                         st.success("Processing completed successfully!")
 
@@ -247,6 +244,7 @@ def main():
                             file_name="combined_comparison_output.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
+
                 except Exception as e:
                     st.error(f"An error occurred during processing: {e}")
 

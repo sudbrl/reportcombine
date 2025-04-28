@@ -184,7 +184,7 @@ def calculate_common_branch_name(sheets_1, sheets_2, writer):
                 
     if common_branch_present:
         combined_df.reset_index().to_excel(writer, sheet_name='Branch', index=False)
-        worksheet = writer.sheets['Compare by Branch Name']
+        worksheet = writer.sheets['Branch']
         total_row_idx = len(combined_df)
         for col in range(len(combined_df.columns)):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)

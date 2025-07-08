@@ -157,46 +157,42 @@ def calculate_common_branch_name(sheets_1, sheets_2, writer):
                 cell.number_format = '0.00'
     return common_branch_present
 
-# --- Login UI ---
 def login_page():
     st.markdown("""
         <style>
         .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 2rem;
-            background-color: #f3f6fc;
-            border-radius: 10px;
-            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            max-width: 350px;
+            margin: 80px auto;
+            padding: 20px;
+            background: #f0f2f6;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .login-header {
+            font-size: 28px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 25px;
             text-align: center;
-        }
-        .login-container input {
-            margin-bottom: 1rem;
-        }
-        .login-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: #1f4e79;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         </style>
         <div class="login-container">
-            <div class="login-title">Secure Login</div>
+            <div class="login-header">Please Log In</div>
         </div>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        username = st.text_input("Username", key="username_input")
-        password = st.text_input("Password", type="password", key="password_input")
-        login_button = st.button("Login")
+    username = st.text_input("Username", key="username_input")
+    password = st.text_input("Password", type="password", key="password_input")
+    login_button = st.button("Login")
 
-        if login_button:
-            if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
-                st.session_state["authenticated"] = True
-                st.experimental_rerun()
-            else:
-                st.session_state["authenticated"] = False
-                st.error("Invalid username or password.")
-
+    if login_button:
+        if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
+            st.session_state["authenticated"] = True
+            st.experimental_rerun()
+        else:
+            st.session_state["authenticated"] = False
+            st.error("Invalid username or password.")
 
 # --- Main App UI ---
 def app_page():

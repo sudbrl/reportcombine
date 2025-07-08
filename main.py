@@ -189,11 +189,12 @@ def login_page():
     if login_button:
         if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
             st.session_state["authenticated"] = True
-            st.experimental_rerun()
+            st.success("Login successful!")
         else:
             st.session_state["authenticated"] = False
             st.error("Invalid username or password.")
 
+# --- Main App UI ---
 def app_page():
     st.title("📊 Excel File Comparison Tool")
 
@@ -236,6 +237,7 @@ def app_page():
                 except Exception as e:
                     st.error(f"An error occurred during processing: {e}")
 
+# --- Main Entry ---
 def main():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -247,3 +249,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

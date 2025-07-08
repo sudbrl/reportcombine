@@ -180,7 +180,7 @@ def login_page():
         }
         </style>
         <div class="login-container">
-            <div class="login-title">🔐 Secure Login</div>
+            <div class="login-title">Secure Login</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -196,6 +196,7 @@ def login_page():
             else:
                 st.session_state["authenticated"] = False
                 st.error("Invalid username or password.")
+
 
 # --- Main App UI ---
 def app_page():

@@ -5,17 +5,16 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
 
-# Hides the main menu, footer, and header
-hide_streamlit_style = """
+# --- Hide Streamlit UI components ---
+st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
-    """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# Function to adjust Excel column widths
+# --- Autofit Excel Columns ---
 def autofit_excel(writer):
     for sheet_name in writer.sheets:
         worksheet = writer.sheets[sheet_name]
@@ -24,32 +23,20 @@ def autofit_excel(writer):
             adjusted_width = max_length + 2
             worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
 
+# --- Preprocess DataFrame ---
 def preprocess_dataframe(df):
-    # List of loan types to exclude
     loan_types_to_exclude = [
         'STAFF SOCIAL LOAN', 'STAFF VEHICLE LOAN', 'STAFF HOME LOAN',
         'STAFF FLEXIBLE LOAN', 'STAFF HOME LOAN(COF)', 'STAFF VEHICLE FACILITY LOAN (EVF)'
     ]
-    
-    # Normalize 'Ac Type Desc' by stripping whitespace and converting to uppercase
     df['Ac Type Desc'] = df['Ac Type Desc'].str.strip().str.upper()
-    
-    # Convert the exclusion list to uppercase to match the normalized 'Ac Type Desc'
     loan_types_to_exclude = [loan_type.upper() for loan_type in loan_types_to_exclude]
-    
-    # Filter out specified loan types
     df = df[~df['Ac Type Desc'].isin(loan_types_to_exclude)]
-    
-    # Remove rows where 'Limit' is 0
     df = df[df['Limit'] != 0]
-    
-    # Exclude rows with specific 'Main Code' values
     df = df[~df['Main Code'].isin(['AcType Total', 'Grand Total'])]
-    
     return df
 
-
-# Function to compare two Excel files and generate a summary
+# --- Compare Excel Files ---
 def compare_excel_files(df_previous, df_this, writer):
     required_columns = ['Main Code', 'Balance']
     for col in required_columns:
@@ -62,11 +49,11 @@ def compare_excel_files(df_previous, df_this, writer):
     previous_codes = set(df_previous['Main Code'])
     this_codes = set(df_this['Main Code'])
 
-    only_in_previous = df_previous.loc[df_previous['Main Code'].isin(previous_codes - this_codes)]
-    only_in_this = df_this.loc[df_this['Main Code'].isin(this_codes - previous_codes)]
+    only_in_previous = df_previous[df_previous['Main Code'].isin(previous_codes - this_codes)]
+    only_in_this = df_this[df_this['Main Code'].isin(this_codes - previous_codes)]
     in_both = pd.merge(
         df_previous[['Main Code', 'Balance']],
-        df_this[['Main Code','Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
+        df_this[['Main Code', 'Branch Name', 'Name', 'Ac Type Desc', 'Balance']],
         on='Main Code',
         suffixes=('_previous', '_this')
     )
@@ -91,46 +78,37 @@ def compare_excel_files(df_previous, df_this, writer):
     in_both[['Main Code', 'Ac Type Desc', 'Branch Name', 'Name', 'Balance_this', 'Balance_previous', 'Change']].to_excel(writer, sheet_name='Movement', index=False)
     df_reco.to_excel(writer, sheet_name='Reco', index=False)
 
-
-# Function to read Excel sheets into Dask DataFrames
+# --- Read Excel Sheets with Dask ---
 def read_excel_sheets(file):
     sheets = pd.read_excel(file, sheet_name=None)
     return {sheet_name: dd.from_pandas(sheet_df, npartitions=1) for sheet_name, sheet_df in sheets.items()}
 
-
-# Function to compare 'Ac Type Desc' across Excel sheets and generate summary
+# --- Compare by Ac Type Desc ---
 def calculate_common_actype_desc(sheets_1, sheets_2, writer):
     common_actype_present = False
     combined_df = pd.DataFrame()
-    for sheet_name_1, df1 in sheets_1.items():
-        for sheet_name_2, df2 in sheets_2.items():
+    for df1 in sheets_1.values():
+        for df2 in sheets_2.values():
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
-                
                 common_actype_present = True
-
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
-
                 df1_grouped = df1.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
                 df2_grouped = df2.groupby('Ac Type Desc').agg({'Balance': 'sum', 'Ac Type Desc': 'count'})
-                
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
-                
                 combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer').fillna(0)
                 combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
                 combined_df['Percent Change'] = ((combined_df['Change'] / combined_df['Previous Balance Sum'].replace({0: pd.NA})) * 100).fillna(0).map('{:.2f}%'.format)
-
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
                 total_prev_balance = total_row.at['Total', 'Previous Balance Sum']
                 total_new_balance = total_row.at['Total', 'New Balance Sum']
                 overall_percent_change = (total_new_balance - total_prev_balance) / total_prev_balance * 100 if total_prev_balance != 0 else 0
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
-
                 combined_df = pd.concat([combined_df, total_row])
-                
+
     if common_actype_present:
         combined_df.reset_index().to_excel(writer, sheet_name='Compare', index=False)
         worksheet = writer.sheets['Compare']
@@ -139,49 +117,35 @@ def calculate_common_actype_desc(sheets_1, sheets_2, writer):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
-                cell.number_format = '0.00'  # Ensure Change column is not in percentage format
-    
+                cell.number_format = '0.00'
     return common_actype_present
 
-
-# Function to compare 'Branch Name' across Excel sheets and generate summary
+# --- Compare by Branch Name ---
 def calculate_common_branch_name(sheets_1, sheets_2, writer):
     common_branch_present = False
     combined_df = pd.DataFrame()
-    
-    for sheet_name_1, df1 in sheets_1.items():
-        for sheet_name_2, df2 in sheets_2.items():
+    for df1 in sheets_1.values():
+        for df2 in sheets_2.values():
             if all(col in df1.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']) and \
                all(col in df2.columns for col in ['Ac Type Desc', 'Balance', 'Main Code', 'Limit']):
-                
                 common_branch_present = True
-
                 df1 = preprocess_dataframe(df1.compute())
                 df2 = preprocess_dataframe(df2.compute())
-
-                # Group by 'Branch Name' instead of 'Ac Type Desc'
                 df1_grouped = df1.groupby('Branch Name').agg({'Balance': 'sum', 'Branch Name': 'count'})
                 df2_grouped = df2.groupby('Branch Name').agg({'Balance': 'sum', 'Branch Name': 'count'})
-                
                 df1_grouped.columns = ['Previous Balance Sum', 'Previous Count']
                 df2_grouped.columns = ['New Balance Sum', 'New Count']
-                
-                # Merge the dataframes on 'Branch Name'
                 combined_df = pd.merge(df1_grouped, df2_grouped, left_index=True, right_index=True, how='outer').fillna(0)
                 combined_df['Change'] = combined_df['New Balance Sum'] - combined_df['Previous Balance Sum']
                 combined_df['Percent Change'] = ((combined_df['Change'] / combined_df['Previous Balance Sum'].replace({0: pd.NA})) * 100).fillna(0).map('{:.2f}%'.format)
-
-                # Calculate total row
                 total_row = pd.DataFrame(combined_df.sum()).transpose()
                 total_row.index = ['Total']
                 total_prev_balance = total_row.at['Total', 'Previous Balance Sum']
                 total_new_balance = total_row.at['Total', 'New Balance Sum']
                 overall_percent_change = (total_new_balance - total_prev_balance) / total_prev_balance * 100 if total_prev_balance != 0 else 0
                 total_row.at['Total', 'Percent Change'] = '{:.2f}%'.format(overall_percent_change)
-
-                # Append the total row
                 combined_df = pd.concat([combined_df, total_row])
-                
+
     if common_branch_present:
         combined_df.reset_index().to_excel(writer, sheet_name='Branch', index=False)
         worksheet = writer.sheets['Branch']
@@ -190,75 +154,101 @@ def calculate_common_branch_name(sheets_1, sheets_2, writer):
             cell = worksheet.cell(row=total_row_idx + 1, column=col + 1)
             cell.font = Font(bold=True)
             if combined_df.columns[col] == 'Change':
-                cell.number_format = '0.00'  # Ensure 'Change' column is not in percentage format
-    
+                cell.number_format = '0.00'
     return common_branch_present
 
+# --- Login UI ---
+def login_page():
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 2rem;
+            background-color: #f3f6fc;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .login-container input {
+            margin-bottom: 1rem;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1f4e79;
+        }
+        </style>
+        <div class="login-container">
+            <div class="login-title">🔐 Secure Login</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# Main function to run the Streamlit app
+    with st.container():
+        username = st.text_input("Username", key="username_input")
+        password = st.text_input("Password", type="password", key="password_input")
+        login_button = st.button("Login")
+
+        if login_button:
+            if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
+                st.session_state["authenticated"] = True
+                st.experimental_rerun()
+            else:
+                st.session_state["authenticated"] = False
+                st.error("Invalid username or password.")
+
+# --- Main App UI ---
+def app_page():
+    st.title("📊 Excel File Comparison Tool")
+
+    st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
+    previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
+    current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
+
+    if previous_file and current_file:
+        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: white; font-weight: bold; }</style>', unsafe_allow_html=True)
+        if st.button("Start Processing"):
+            with st.spinner("Processing... Please wait."):
+                try:
+                    previous_wb = load_workbook(previous_file)
+                    current_wb = load_workbook(current_file)
+
+                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                        st.error("Each workbook should only contain one sheet.")
+                    else:
+                        df_previous = pd.read_excel(previous_file)
+                        df_this = pd.read_excel(current_file)
+
+                        excel_sheets_1 = read_excel_sheets(previous_file)
+                        excel_sheets_2 = read_excel_sheets(current_file)
+
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                            calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
+                            compare_excel_files(df_previous, df_this, writer)
+                            autofit_excel(writer)
+
+                        output.seek(0)
+                        st.success("Processing completed successfully!")
+                        st.download_button(
+                            label="Download Comparison Sheet",
+                            data=output,
+                            file_name="combined_comparison_output.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except Exception as e:
+                    st.error(f"An error occurred during processing: {e}")
+
+# --- Main Entry ---
 def main():
-    st.title("Excel File Comparison Tool")
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
 
-    # 🔐 Simple password-based authentication with login button
-    st.subheader("Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    login_button = st.button("Login")
-
-    if login_button:
-        if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
-            st.session_state["authenticated"] = True
-            st.success(f"Welcome, {username}!")
-        else:
-            st.session_state["authenticated"] = False
-            st.error("Invalid username or password.")
-
-    if st.session_state.get("authenticated"):
-        # ✅ Your existing UI goes here:
-        st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
-        previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
-        current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
-
-        if previous_file and current_file:
-            st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
-            start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
-
-            if start_processing_button:
-                with st.spinner("Processing... Please wait."):
-
-                    try:
-                        previous_wb = load_workbook(previous_file)
-                        current_wb = load_workbook(current_file)
-
-                        if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
-                            st.error("Each workbook should only contain one sheet.")
-                        else:
-                            df_previous = pd.read_excel(previous_file)
-                            df_this = pd.read_excel(current_file)
-
-                            excel_sheets_1 = read_excel_sheets(previous_file)
-                            excel_sheets_2 = read_excel_sheets(current_file)
-
-                            output = BytesIO()
-                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                                common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-                                common_branch_present = calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
-                                compare_excel_files(df_previous, df_this, writer)
-                                autofit_excel(writer)
-
-                            output.seek(0)
-                            st.success("Processing completed successfully!")
-
-                            st.download_button(
-                                label="Download Comparison Sheet",
-                                data=output,
-                                file_name="combined_comparison_output.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-
-                    except Exception as e:
-                        st.error(f"An error occurred during processing: {e}")
-
+    if st.session_state["authenticated"]:
+        app_page()
+    else:
+        login_page()
 
 if __name__ == "__main__":
     main()

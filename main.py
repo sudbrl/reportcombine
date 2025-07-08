@@ -161,18 +161,18 @@ def login_page():
     st.markdown("""
         <style>
         .login-container {
-            max-width: 350px;
-            margin: 80px auto;
-            padding: 20px;
+            max-width: 280px;
+            margin: 60px auto;
+            padding: 15px 20px;
             background: #f0f2f6;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
         .login-header {
-            font-size: 28px;
+            font-size: 20px;
             font-weight: 600;
             color: #333;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
             text-align: center;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }

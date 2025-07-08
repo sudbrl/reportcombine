@@ -199,54 +199,65 @@ def calculate_common_branch_name(sheets_1, sheets_2, writer):
 def main():
     st.title("Excel File Comparison Tool")
 
-    st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
-    previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
-    current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
+    # 🔐 Simple password-based authentication
+    st.subheader("Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
-    if previous_file and current_file:
-        st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
-        start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
+    if username and password:
+        if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
+            st.success(f"Welcome, {username}!")
 
-        if start_processing_button:
-            with st.spinner("Processing... Please wait."):
+            st.write("Upload the previous period's Excel file and this period's Excel file to compare them.")
+            previous_file = st.file_uploader("Upload Previous Period's Excel File", type=["xlsx"])
+            current_file = st.file_uploader("Upload This Period's Excel File", type=["xlsx"])
 
-                try:
-                    previous_wb = load_workbook(previous_file)
-                    current_wb = load_workbook(current_file)
+            if previous_file and current_file:
+                st.markdown('<style>div.stButton > button { background-color: #0b0080; color: blue; font-weight: bold; }</style>', unsafe_allow_html=True)
+                start_processing_button = st.button("Start Processing", key="start_processing_button", help="Click to start processing")
 
-                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
-                        st.error("Each workbook should only contain one sheet.")
-                    else:
-                        df_previous = pd.read_excel(previous_file)
-                        df_this = pd.read_excel(current_file)
+                if start_processing_button:
+                    with st.spinner("Processing... Please wait."):
 
-                        excel_sheets_1 = read_excel_sheets(previous_file)
-                        excel_sheets_2 = read_excel_sheets(current_file)
+                        try:
+                            previous_wb = load_workbook(previous_file)
+                            current_wb = load_workbook(current_file)
 
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            # Generate the Compare by Ac Type Desc sheet
-                            common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-                            
-                            # Generate the Compare by Branch Name sheet
-                            common_branch_present = calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
-                            
-                            # Process other reports
-                            compare_excel_files(df_previous, df_this, writer)
-                            autofit_excel(writer)
+                            if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                                st.error("Each workbook should only contain one sheet.")
+                            else:
+                                df_previous = pd.read_excel(previous_file)
+                                df_this = pd.read_excel(current_file)
 
-                        output.seek(0)
-                        st.success("Processing completed successfully!")
+                                excel_sheets_1 = read_excel_sheets(previous_file)
+                                excel_sheets_2 = read_excel_sheets(current_file)
 
-                        st.download_button(
-                            label="Download Comparison Sheet",
-                            data=output,
-                            file_name="combined_comparison_output.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                                output = BytesIO()
+                                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                    # Generate the Compare by Ac Type Desc sheet
+                                    common_actype_present = calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
 
-                except Exception as e:
-                    st.error(f"An error occurred during processing: {e}")
+                                    # Generate the Compare by Branch Name sheet
+                                    common_branch_present = calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
+
+                                    # Process other reports
+                                    compare_excel_files(df_previous, df_this, writer)
+                                    autofit_excel(writer)
+
+                                output.seek(0)
+                                st.success("Processing completed successfully!")
+
+                                st.download_button(
+                                    label="Download Comparison Sheet",
+                                    data=output,
+                                    file_name="combined_comparison_output.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+
+                        except Exception as e:
+                            st.error(f"An error occurred during processing: {e}")
+        else:
+            st.error("Invalid username or password.")
 
 if __name__ == "__main__":
     main()

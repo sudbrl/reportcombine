@@ -182,11 +182,12 @@ def login_page():
         </div>
     """, unsafe_allow_html=True)
 
-    username = st.text_input("Username", key="username_input")
-    password = st.text_input("Password", type="password", key="password_input")
-    login_button = st.button("Login")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
 
-    if login_button:
+    if submitted:
         if username in st.secrets["auth"] and password == st.secrets["auth"][username]:
             st.session_state["authenticated"] = True
             st.success("Login successful!")

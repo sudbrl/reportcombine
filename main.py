@@ -4,6 +4,14 @@ import dask.dataframe as dd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
+st.set_page_config(page_title="Report", page_icon="📊", initial_sidebar_state="auto", menu_items={
+    'Get Help': None,
+    'Report a bug': None,
+    'About': None
+})
+
+
+
 
 # --- Hide Streamlit UI components ---
 st.markdown("""

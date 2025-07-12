@@ -4,14 +4,14 @@ import dask.dataframe as dd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 from io import BytesIO
+import os
+import tempfile
+
 st.set_page_config(page_title="Report", page_icon="📊", initial_sidebar_state="auto", menu_items={
     'Get Help': None,
     'Report a bug': None,
     'About': None
 })
-
-
-
 
 # --- Hide Streamlit UI components ---
 st.markdown("""
@@ -216,35 +216,51 @@ def app_page():
         if st.button("Start Processing"):
             with st.spinner("Processing... Please wait."):
                 try:
-                    previous_wb = load_workbook(previous_file)
-                    current_wb = load_workbook(current_file)
+                    # Create temporary files for processing
+                    with tempfile.NamedTemporaryFile(delete=True, suffix='.xlsx') as tmp_prev, \
+                         tempfile.NamedTemporaryFile(delete=True, suffix='.xlsx') as tmp_curr:
+                        
+                        # Write uploaded content to temp files
+                        tmp_prev.write(previous_file.getvalue())
+                        tmp_curr.write(current_file.getvalue())
+                        
+                        # Process files
+                        previous_wb = load_workbook(tmp_prev.name)
+                        current_wb = load_workbook(tmp_curr.name)
 
-                    if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
-                        st.error("Each workbook should only contain one sheet.")
-                    else:
-                        df_previous = pd.read_excel(previous_file)
-                        df_this = pd.read_excel(current_file)
+                        if len(previous_wb.sheetnames) > 1 or len(current_wb.sheetnames) > 1:
+                            st.error("Each workbook should only contain one sheet.")
+                        else:
+                            df_previous = pd.read_excel(tmp_prev.name)
+                            df_this = pd.read_excel(tmp_curr.name)
 
-                        excel_sheets_1 = read_excel_sheets(previous_file)
-                        excel_sheets_2 = read_excel_sheets(current_file)
+                            excel_sheets_1 = read_excel_sheets(tmp_prev.name)
+                            excel_sheets_2 = read_excel_sheets(tmp_curr.name)
 
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
-                            calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
-                            compare_excel_files(df_previous, df_this, writer)
-                            autofit_excel(writer)
+                            output = BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                calculate_common_actype_desc(excel_sheets_1, excel_sheets_2, writer)
+                                calculate_common_branch_name(excel_sheets_1, excel_sheets_2, writer)
+                                compare_excel_files(df_previous, df_this, writer)
+                                autofit_excel(writer)
 
-                        output.seek(0)
-                        st.success("Processing completed successfully!")
-                        st.download_button(
-                            label="Download Comparison Sheet",
-                            data=output,
-                            file_name="combined_comparison_output.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                            output.seek(0)
+                            st.success("Processing completed successfully!")
+                            st.download_button(
+                                label="Download Comparison Sheet",
+                                data=output,
+                                file_name="combined_comparison_output.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
                 except Exception as e:
                     st.error(f"An error occurred during processing: {e}")
+                finally:
+                    # Clear memory
+                    if 'df_previous' in locals(): del df_previous
+                    if 'df_this' in locals(): del df_this
+                    if 'excel_sheets_1' in locals(): del excel_sheets_1
+                    if 'excel_sheets_2' in locals(): del excel_sheets_2
+                    if 'output' in locals(): output.close()
 
 # --- Main Entry ---
 def main():
@@ -258,4 +274,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
